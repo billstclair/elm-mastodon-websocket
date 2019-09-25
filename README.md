@@ -6,5 +6,7 @@ See the `example` directory for how to define the ports and to configure the app
 
 # Running tests
 
+```
 cd .../elm-mastodon-websocket
 elm-test
+```
