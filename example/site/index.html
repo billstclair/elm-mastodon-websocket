@@ -1,0 +1,33 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Mastodon WebSocket Stream Example</title>
+    <link rel='stylesheet' href='css/global.css'>
+    <script type='text/javascript' src='js/PortFunnel.js'></script>
+    <script type='text/javascript' src='js/PortFunnel/LocalStorage.js'></script>
+    <script type='text/javascript' src='js/PortFunnel/WebSocket.js'></script>
+    <script type='text/javascript' src='elm.js'></script>
+  </head>
+  <body style='width: 40em; margin: auto; margin-top: 2em;'>
+    <noscript>
+      <h2 style='text-align: center;'>
+        Mastodon WebSocket Stream Example
+      </h2>
+      <p style='text-align: center;'>
+        This is a live example of the `billstclair/mastodon-websocket` package.
+      </p>
+      <p style='text-align: center;'>
+        To get more than this static page, you need to enable JavaScript
+        in your browser.
+      </p>
+      <p style='text-align: center;'>
+        <a href='https://github.com/billstclair/mastodon-websocket'>GitHub</a>
+      </p>
+    </noscript>
+    <script type='text/javascript'>
+      // It's an application, so it doesn't need a div.
+      var app = Elm['Main'].init({ flags: true });
+      PortFunnel.subscribe(app);
+    </script>
+  </body>
+</html>
