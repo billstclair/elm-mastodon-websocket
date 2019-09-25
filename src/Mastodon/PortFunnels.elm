@@ -12,7 +12,7 @@
 
 module Mastodon.PortFunnels exposing
     ( FunnelDict, Handler(..), State
-    , getCmdPort, initialState, makeFunnelDict
+    , getCmdPort, subscriptions, initialState, makeFunnelDict
     , processValue
     )
 
@@ -31,7 +31,7 @@ example for details, and how to initialize the JavaScript code for the ports.
 
 # Initialization
 
-@docs getCmdPort, initialState, makeFunnelDict
+@docs getCmdPort, subscriptions, initialState, makeFunnelDict
 
 
 # Processing
@@ -185,6 +185,13 @@ getCmdPort state tagger moduleName useSimulator =
 
             Nothing ->
                 state.cmdPort
+
+
+{-| Create a subscription for the `subPort`, given a Msg wrapper.
+-}
+subscriptions : State msg -> (Value -> msg) -> model -> Sub msg
+subscriptions state process model =
+    state.subPort process
 
 
 {-| A `Dict` that maps a module name to a concretized `FunnelSpec`.

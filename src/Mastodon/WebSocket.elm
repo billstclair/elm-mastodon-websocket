@@ -33,7 +33,7 @@ import Json.Decode as JD exposing (Decoder)
 import Json.Encode as JE exposing (Value)
 import Mastodon.EncodeDecode as ED
 import Mastodon.Entity exposing (Notification, Status)
-import Mastodon.PortFunnels exposing (FunnelDict, Handler(..), State)
+import Mastodon.PortFunnels exposing (State)
 import PortFunnel.WebSocket
 import Url.Builder as Builder exposing (QueryParameter)
 
