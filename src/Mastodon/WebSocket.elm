@@ -12,7 +12,7 @@
 
 module Mastodon.WebSocket exposing
     ( StreamType(..), Event(..)
-    , streamUrl, decodeEvent
+    , streamUrl, open, close, decodeEvent
     )
 
 {-| The WebSocket API for the Mastodon Social Network.
@@ -25,7 +25,7 @@ module Mastodon.WebSocket exposing
 
 # Functions
 
-@docs streamUrl, decodeEvent
+@docs streamUrl, open, close, decodeEvent
 
 -}
 
@@ -105,6 +105,34 @@ streamTypeToQueryParameters streamType =
             [ Builder.string "stream" "group"
             , Builder.string "group" id
             ]
+
+
+{-| Open a WebSocket connection.
+
+    open state key url
+
+`state` is initially the result of `WebSocket.PortFunnels.initialState`.
+
+`key` is a unique key string.
+
+`url` is the result of a call to `streamUrl`.
+
+-}
+open : State msg -> String -> String -> Cmd msg
+open state key url =
+    PortFunnel.WebSocket.makeOpenWithKey key url
+        |> PortFunnel.WebSocket.send state.cmdPort
+
+
+{-| Close a socket opened with `open`.
+
+    close state key
+
+-}
+close : State msg -> String -> Cmd msg
+close state key =
+    PortFunnel.WebSocket.makeClose key
+        |> PortFunnel.WebSocket.send state.cmdPort
 
 
 {-| An event received over the websocket.
