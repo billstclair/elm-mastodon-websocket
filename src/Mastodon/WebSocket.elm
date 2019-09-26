@@ -61,50 +61,63 @@ type StreamType
     | GroupStream String
 
 
-{-| Convert a host and a stream type into a URL for the WebSocket connection.
+{-| Convert a host, access token, and stream type into a URL for the WebSocket connection.
+
+    streamUrl host accessToken streamType
+
+If `accessToken` is `Nothing`, will attempt to connect without authentication. This works for the following `StreamType`s: [TODO]
+
 -}
-streamUrl : String -> StreamType -> String
-streamUrl host streamType =
+streamUrl : String -> Maybe String -> StreamType -> String
+streamUrl host accessToken streamType =
     Builder.crossOrigin
         ("https://" ++ host)
         [ "api", "v1", "streaming" ]
-        (streamTypeToQueryParameters streamType)
+        (streamTypeToQueryParameters accessToken streamType)
 
 
-streamTypeToQueryParameters : StreamType -> List QueryParameter
-streamTypeToQueryParameters streamType =
-    case streamType of
-        UserStream ->
-            [ Builder.string "stream" "user" ]
+streamTypeToQueryParameters : Maybe String -> StreamType -> List QueryParameter
+streamTypeToQueryParameters accessToken streamType =
+    List.concat
+        [ case accessToken of
+            Nothing ->
+                []
 
-        PublicStream ->
-            [ Builder.string "stream" "public" ]
+            Just token ->
+                [ Builder.string "access_token" token ]
+        , case streamType of
+            UserStream ->
+                [ Builder.string "stream" "user" ]
 
-        LocalStream ->
-            [ Builder.string "stream" "public:local" ]
+            PublicStream ->
+                [ Builder.string "stream" "public" ]
 
-        PublicHashtagStream hashtag ->
-            [ Builder.string "stream" "hashtag"
-            , Builder.string "tag" hashtag
-            ]
+            LocalStream ->
+                [ Builder.string "stream" "public:local" ]
 
-        LocalHashtagStream hashtag ->
-            [ Builder.string "stream" "hashtag:local"
-            , Builder.string "tag" hashtag
-            ]
+            PublicHashtagStream hashtag ->
+                [ Builder.string "stream" "hashtag"
+                , Builder.string "tag" hashtag
+                ]
 
-        ListStream id ->
-            [ Builder.string "stream" "list"
-            , Builder.string "list" id
-            ]
+            LocalHashtagStream hashtag ->
+                [ Builder.string "stream" "hashtag:local"
+                , Builder.string "tag" hashtag
+                ]
 
-        DirectStream ->
-            [ Builder.string "stream" "direct" ]
+            ListStream id ->
+                [ Builder.string "stream" "list"
+                , Builder.string "list" id
+                ]
 
-        GroupStream id ->
-            [ Builder.string "stream" "group"
-            , Builder.string "group" id
-            ]
+            DirectStream ->
+                [ Builder.string "stream" "direct" ]
+
+            GroupStream id ->
+                [ Builder.string "stream" "group"
+                , Builder.string "group" id
+                ]
+        ]
 
 
 {-| Open a WebSocket connection.

@@ -195,17 +195,17 @@ type alias Model =
     , loginServer : Maybe String
     , prettify : Bool
     , style : Style
+    , showMetadata : Bool
+    , showReceived : Bool
+    , showEntity : Bool
     , selectedRequest : SelectedRequest
     , username : String
     , accountId : String
     , accountIds : String
-    , showMetadata : Bool
     , q : String
     , resolve : Bool
     , following : Bool
     , groupId : String
-    , showReceived : Bool
-    , showEntity : Bool
     , whichGroups : WhichGroups
     , followReblogs : Bool
     , onlyMedia : Bool
@@ -3878,7 +3878,7 @@ view model =
         { backgroundColor, color } =
             getStyle model.style
     in
-    { title = "Mastodon API Explorer"
+    { title = "Mastodon WebSocket"
     , body =
         [ renderDialog model
         , div
@@ -3896,7 +3896,7 @@ view model =
                 , style "margin" "auto"
                 ]
                 [ div []
-                    [ h2 [] [ text "Mastodon API Explorer" ]
+                    [ h2 [] [ text "Mastodon WebSocket" ]
                     , case model.loginServer of
                         Nothing ->
                             text ""
@@ -3922,118 +3922,10 @@ view model =
                                             ]
                                 ]
                     , p []
-                        [ selectedRequestHtml LoginSelected
-                            "https://docs.joinmastodon.org/api/authentication/"
-                            model
-                            loginSelectedUI
-                        , selectedRequestHtml InstanceSelected
-                            "https://docs.joinmastodon.org/api/rest/instances/"
-                            model
-                            instanceSelectedUI
-                        , selectedRequestHtml AccountsSelected
-                            "https://docs.joinmastodon.org/api/rest/accounts/"
-                            model
-                            accountsSelectedUI
-                        , selectedRequestHtml BlocksSelected
-                            "https://docs.joinmastodon.org/api/rest/blocks/"
-                            model
-                            blocksSelectedUI
-                        , selectedRequestHtml CustomEmojisSelected
-                            "https://docs.joinmastodon.org/api/rest/custom-emojis/"
-                            model
-                            customEmojisSelectedUI
-                        , selectedRequestHtml EndorsementsSelected
-                            "https://docs.joinmastodon.org/api/rest/endorsements/"
-                            model
-                            endorsementsSelectedUI
-                        , selectedRequestHtml FavouritesSelected
-                            "https://docs.joinmastodon.org/api/rest/favourites/"
-                            model
-                            favouritesSelectedUI
-                        , selectedRequestHtml FiltersSelected
-                            "https://docs.joinmastodon.org/api/rest/filters/"
-                            model
-                            filtersSelectedUI
-                        , selectedRequestHtml FollowRequestsSelected
-                            "https://docs.joinmastodon.org/api/rest/follow-requests/"
-                            model
-                            followRequestsSelectedUI
-                        , selectedRequestHtml FollowSuggestionsSelected
-                            "https://docs.joinmastodon.org/api/rest/follow-suggestions/"
-                            model
-                            followSuggestionsSelectedUI
-                        , selectedRequestHtml GroupsSelected
-                            ""
-                            model
-                            groupsSelectedUI
-                        , selectedRequestHtml ListsSelected
-                            "https://docs.joinmastodon.org/api/rest/lists/"
-                            model
-                            listsSelectedUI
-                        , selectedRequestHtml MutesSelected
-                            "https://docs.joinmastodon.org/api/rest/mutes/"
-                            model
-                            mutesSelectedUI
-                        , selectedRequestHtml NotificationsSelected
-                            "https://docs.joinmastodon.org/api/rest/notifications/"
-                            model
-                            notificationsSelectedUI
-                        , selectedRequestHtml ReportsSelected
-                            "https://docs.joinmastodon.org/api/rest/reports/"
-                            model
-                            reportsSelectedUI
-                        , selectedRequestHtml ScheduledStatusesSelected
-                            "https://docs.joinmastodon.org/api/rest/scheduled-statuses/"
-                            model
-                            scheduledStatusesSelectedUI
-                        , selectedRequestHtml SearchSelected
-                            "https://docs.joinmastodon.org/api/rest/search/"
-                            model
-                            searchSelectedUI
-                        , selectedRequestHtml StatusesSelected
-                            "https://docs.joinmastodon.org/api/rest/statuses/"
-                            model
-                            statusesSelectedUI
-                        , selectedRequestHtml TimelinesSelected
-                            "https://docs.joinmastodon.org/api/rest/timelines/"
-                            model
-                            timelinesSelectedUI
-                        , selectedRequestHtml TrendsSelected
-                            ""
-                            model
-                            trendsSelectedUI
+                        [ loginSelectedUI model
                         ]
                     , p [ style "color" "red" ]
                         [ Maybe.withDefault "" model.msg |> text ]
-                    , p []
-                        [ span [ hidden <| model.selectedKeyValue == "" ]
-                            [ b "selected path: "
-                            , text model.selectedKeyPath
-                            , case Url.fromString model.selectedKeyValue of
-                                Nothing ->
-                                    text ""
-
-                                Just _ ->
-                                    span []
-                                        [ br
-                                        , a
-                                            [ href model.selectedKeyValue
-                                            , target "_blank"
-                                            ]
-                                            [ text "open URL in new tab" ]
-                                        ]
-                            , br
-                            , textarea
-                                [ id "selectedKeyValue"
-                                , rows 4
-                                , cols 80
-                                , readonly True
-                                , value model.selectedKeyValue
-                                ]
-                                []
-                            , br
-                            ]
-                        ]
                     , checkBox ToggleShowJsonTree model.showJsonTree "show tree"
                     , if model.showJsonTree then
                         text ""
@@ -4043,8 +3935,6 @@ view model =
                             [ text " "
                             , checkBox TogglePrettify model.prettify "prettify"
                             ]
-                    , text " "
-                    , checkBox ToggleUseElmButtonNames model.useElmButtonNames "elm button names"
                     , text " "
                     , button ClearSentReceived "Clear"
                     , p [] [ b "Sent:" ]
@@ -4148,16 +4038,16 @@ view model =
                     , p []
                         [ text <| "Copyright " ++ special.copyright ++ " 2019, Bill St. Clair"
                         , br
-                        , link "@imacpr0n@mastodon.social"
-                            "https://mastodon.social/@imacpr0n"
+                        , link "@billstclair@impeccable.social"
+                            "https://impeccable.social/billstclair"
                         , br
                         , text "API Docs: "
                         , link "docs.joinmastodon.org"
-                            "https://docs.joinmastodon.org/api/guidelines"
+                            "https://docs.joinmastodon.org/api/streaming/"
                         , br
                         , text "Source code: "
                         , link "GitHub"
-                            "https://github.com/billstclair/elm-mastodon"
+                            "https://github.com/billstclair/elm-mastodon-websocket"
                         ]
                     ]
                 ]
@@ -5313,337 +5203,10 @@ replaceSendButtonNames useElmButtonNames string =
 help : Model -> Html Msg
 help model =
     Markdown.toHtml [] <|
-        replaceSendButtonNames model.useElmButtonNames <|
-            case model.selectedRequest of
-                InstanceSelected ->
-                    """
-**Instance Information Help**
+        """
+**Help**
 
-The "$GetInstance" button fetches the `Instance` entity for the "Use API for" instance.
-
-The "$GetActivity" button fetches a list of `Activity` entities.
-
-The "$GetPeers" button fetches a list of peer domain names.
-                """
-
-                AccountsSelected ->
-                    """
-**AccountsRequest Help**
-
-The "$GetVerifyCredentials" button fetches the `Account` entity for the logged-in user.
-
-The "$GetAccountByUsername" button fetches the `Account` entity for the user with the given "username". If the "username" is blank, it uses the username of the logged in user, or sends blank, which will result in an error, if not logged in. If successful, it fills in the "account id" with that user's account ID. This is a Gab-only feature.
-
-The "$GetAccount" button fetches the `Account` entity for the user with the given "account id". If "account id" is blank, uses the id of the logged in user, or sends blank, which will result in an error, if not logged in.
-
-The "$GetFollowers" and "$GetFollowing" buttons fetch lists of the associated `Account` entities. If "limit" is non-blank, it is the maximum number of entities to return.
-
-The "$GetRelationships" button returns a list of `Relationship` entities, one for each of the (comma-separated) "ids".
-
-The "$GetSearchAccounts" button returns a list of `Account` entities that match "q", "resolve", and "following". If "limit" is non-blank, it is the maximum number of entities to return.
-
-The "$PostFollow" / "$PostUnfollow" button either follows or unfollows the account with the given "account id". If following, will show reblogs if and only if "reblogs" is checked. In order to decide whether to follow or unfollow when you click the button, every change to the "account id" causes A `GetRelationships` request to be sent.
-
-Since the parameters to "$PatchUpdateCredentials" take a lot of screen space, that section is initially invisible. Click the "Show '$PatchUpdateCredentials'" button to reveal it.
-
-The "$PatchUpdateCredentials" button changes account profile information from "Display name", "Note", "Avatar", "Header", "Privacy", "Locked", "Sensitive", "Language", and "Profile MetaData". Only the changed fields are sent to the server. The displayed field values are updated whenever a request returns the logged-in user's `Account` entity, e.g. at login or when you press the "$GetVerifyCredentials" button.
-
-The "Hide" button to the left of "$PatchUpdateCredentials" hides that section of the user interface again.
-              """
-
-                BlocksSelected ->
-                    """
-**BlocksRequest Help**
-
-The "$GetBlocks" button gets a list of blocked accounts, limited in number by "limit".
-
-The "$PostBlock" button blocks the "account id", and returns a `Relationship` entity.
-
-The "$PostUnblock" button unblocks the "account id", and returns a `Relationship` entity.
-              """
-
-                CustomEmojisSelected ->
-                    """
-**CustomEmojisRequest Help**
-
-The "$GetCustomEmojis" button gets a list of `Emoji` entities.
-                   """
-
-                EndorsementsSelected ->
-                    """
-**EndorsementsRequest Help**
-
-The "$GetEndorsements" button gets a list of endorsed "Account" entities.
-
-The "$PostPinAccount" button adds "account id" to the list of endorsed accounts.
-
-The "$PostUnpinAccount" button removes "account id" from the list of endorsed accounts.
-                   """
-
-                FavouritesSelected ->
-                    """
-**FavouritesRequest Help**
-
-The "$GetFavourites" button gets a maximum of "limit" `Favourites` entities.
-
-The "$PostFavourite" button add "status id" to your list of favourites.
-
-The "$PostUnfavourite" button removes "status id" from your list of favourites.
-                   """
-
-                FiltersSelected ->
-                    """
-**FiltersRequest Help**
-
-The "$GetFilters" button gets your list of `Filter` entities.
-
-The "$GetFilter" button gets the `Filter` entity for "filter id".
-
-The "$PostFilter" button creates a new filter from "phrase", "context", "irreversible", "whole word", and "expires in".
-
-The "$PutFilter" button updates the filter parameters for "filter id".
-
-The "$DeleteFilter" button deletes "filter id".
-                    """
-
-                FollowRequestsSelected ->
-                    """
-**FollowRequestsRequest Help**
-
-The "$GetFollowRequests" button gets a maximum of "limit" `FollowRequest` entities.
-
-The "$PostAuthorizeFollow" button authorizes the follow request from "account id".
-
-The "$PostRejectFollow" button rejects the follow request from "account id".
-
-                   """
-
-                FollowSuggestionsSelected ->
-                    """
-**FollowSuggestionsRequest Help**
-
-The "$GetFollowSuggestions" button requests a list of suggested Account entities.
-
-The "$DeleteFollowSuggestions" button deletes "account id" from the suggestion list.
-                   """
-
-                GroupsSelected ->
-                    """
-**GroupsRequest Help**
-
-Groups are a Gab-only feature.
-
-Click "$GetGroups" to get a list of `Group` entities in the "Member", "Featured", or "Admin" selector.
-
-Click "$GetGroup" to get the `Group` entity for "group id".
-
-Click "$GetGroupAccounts" to get a list of `Account` entities for the group members.
-
-Click "$GetGroupRemovedAccounts" to get a list of `Account` entities for accounts that have been removed from the group (via "$PostGroupRemovedAccounts").
-
-Click "$GetGroupRelationships" to get the list of `GroupRelationship` entities for the comma-separated "group ids".
-
-Click "$PostGroupJoin" to join "group id".
-
-Click "$DeleteGroupJoin" to leave "group id".
-
-Click "$PostGroupRemovedAccounts" to remove "account id" from "group id". It will be returned by "$GetGroupRemovedAccounts".
-
-Click "$DeleteGroupRemovedAccounts" to remove "account id" from the list of removed accounts for "group id". This will allow that person to join again.
-
-Click "$PatchGroupAddAdministrator" to make "account id" an administrator for "group id". There is currently no way to remove an administrator except by removing her from the group with "$PostGroupRemovedAccounts". (This doesn't currently work for me. Don't know why yet)
-
-Click "$DeleteGroupStatus" to remove "status id" from "group id". The status will still exist, but will no longer be part of the group's timeline.
-
-Click "$PostGroup" to create a new group from "title", "description", and "cover image". The cover image will be cropped to a 19x7 aspect ratio (1900x700).
-
-Click $PutGroup to change the "title", "description", and/or "cover image" for "group id". Leave a field blank or the image unspecified to not change it.
-            """
-
-                StatusesSelected ->
-                    """
-**StatusesRequest Help**
-
-Click "$GetStatus" to get the `Status` entity for "status id".
-
-Click "$GetStatusContext" to get the `Context` entity for "status id".
-
-Click "$GetStatusCard" to get the `Card` entity for "status id". A card is generated in the background from the first link in a status. Returns are variously `HTTP 404 status`, `{}`, or `null` when the card doesn't exist.
-
-Click "$GetStatusRebloggedBy" to get a list of `Account` entities that reblogged "status id". "limit" controls the maximum number of results.
-
-Click "$GetStatusFavouritedBy" to get a list of `Account` entities that favorited "status id". "limit" controls the maximum number of results.
-
-Click "$DeleteStatus" to delete "status id", after confirmation.
-
-Click "$PostReblogStatus" to reblog "status id".
-
-Click "$PostUnreblogStatus" to unreblog "status id".
-
-Click "$PostPinStatus" to pin "status id".
-
-Click "$PostUnpinStatus" to unpin "status id".
-
-Click "$PostStatus" to create a new status, using "status", "in reply to id", "group id", "quote of id", "spoiler text", "visibility", "scheduled at", "language", "idempotency key", and "media ids".
-
-If you want to add media to a status, you can do that in the "-- new media --" section. Click "Choose File" to read a media file. Optionally fill in a "description" and ""focus x" and "y" (each between 0.0 and 1.0). Click "$PostMedia" to send it to the server. The "id" from the received `Attachment` entity will set the "media id" and be added to the comma-separated list of "media ids".
-
-To edit the description or focus of a "media id", fill in one or both of those, and click "$PutMedia".
-                """
-
-                ListsSelected ->
-                    """
-**ListsSelected Help**
-
-The "$GetLists" button gets your list of `List` entities.
-
-The "$GetList" button gets the `List` entity for "list id".
-
-The "$GetListAccounts" button gets the list of `Account` entities that are in "list id".
-
-The "$GetAccountLists" button gets the list of `List` entities containing "account id".
-
-The "$PostList" button creates a new list with the given "title".
-
-The "$PutList" button changes the title for "list id" to "title".
-
-The "$DeleteList" button deletes "list id".
-
-The "$PostListAccounts" button adds the (comma-separated) "account ids" to "list id". You must follow each of them, or you'll get an error.
-
-The "$DeleteListAccounts" button removes the "account ids" from "list id".
-                    """
-
-                MutesSelected ->
-                    """
-**MutesRequest Help**
-
-The "$GetAccountMutes" button gets a list of muted accounts, limited in number by "limit".
-
-The "$PostAccountMute" button mutes the "account id", and notifications from that account as well, if "mute notifications" is checked.
-
-The "$PostAccountUnmute" button unmutes the "account id".
-
-The "$PostStatusMute" button mutes the "status id".
-
-The "$PostStatusUnmute" button unmutes the "status id".
-                    """
-
-                NotificationsSelected ->
-                    """
-**NotificationsRequest Help**
-
-The "include all" and "mentions only" buttons change the "excluded notifications" checkboxes to the two most common configurations.
-
-The "$GetNotifications" button returns a list of notifications meeting the paging requirements in "limit", "max id", "min id", and "since id", excluding the checked "excluded notifications", and, if "from account id only" is non-blank, including only notifications from that account ID.
-
-The "$GetNotification" button returns the notification with the given "notification id". It will be disabled if the id field is empty.
-
-The "$PostDismissNotification" button deletes the notification with the given "notification id". It will be disabled if the id field is empty. It does NOT request confirmation.
-
-The "$PostClearNotifications" button deletes all notifications for your account, after confirmation.
-                   """
-
-                ReportsSelected ->
-                    """
-**ReportsRequest Help**
-
-The "$PostReports" button sends "comment" to the instance administrator about the comma-separated list of "status ids" from "account id".
-                    """
-
-                ScheduledStatusesSelected ->
-                    """
-**ScheduledStatusesRequest Help**
-
-The "$GetScheduledStatuses" button returns a list of `ScheduledStatus` entitities.
-
-The "$GetScheduledStatus" button fetches "scheduled status id".
-
-The "$DeleteScheduledStatus" button deletes "scheduled status id".
-
-The "$PutScheduledStatus" button changes the "scheduled at" timestamp for "scheduled status id".
-                    """
-
-                SearchSelected ->
-                    """
-**SearchRequest Help**
-
-The "$GetSearch" button searches for the query string, "q" in accounts, hashtags, and statuses, and returns a `Results` entity. "limit" is the maximum number of results. "offset" is the offset in the results. "resolve" attempts a WebFinger lookup if true. "following" includes only accounts the user is following.
-                    """
-
-                TimelinesSelected ->
-                    """
-**TimelinesRequest Help**
-
-The paging parameters, "limit", "max id", "min id", and "since id" are used for all the timelines requests. The ids are `Status` ids for `GetXXXTimeline` and `Conversation` ids for `GetConversations`.
-
-If "smart paging" is checked, does its best to be smart about changing the paging parameters after a request. If fewer entities are returned than the "limit", and "since id" & "min id" are blank, will set "max id" to the id of the last entity returned. If "min id" is non-blank, and "max id" and "since id" are blank, will set "min id" to the id of the first entity returned.
-
-The "$GetHomeTimeline" button returns the statuses for those you follow.
-
-The "$GetConversations" button returns a list of conversations. I don't know what a conversation is, possibly the PM feature.
-
-The "$GetPublicTimeline" button returns the public timeline, with local posts only if "local" is checked, and with only posts containing media if "media only" is checked.
-
-The "$GetTagTimeline" button returns posts containing the given "hashtag", with local posts only if "local" is checked, and with only posts containing media if "media only" is checked.
-
-The "$GetListTimeline" button returns posts for the list with the given "list id".
-
-The "$GetGroupTimeline" button returns posts for the given "group id".
-              """
-
-                TrendsSelected ->
-                    """
-** TrendsRequest Help**
-
-The "$GetTrends" button fetches a list of `Tag` entities, containing information about trending hashtags. Some servers always return an empty list for this.
-                    """
-
-                LoginSelected ->
-                    """
-**General and Login Help**
-
-Click a radio button to choose the user interface for that section of the API. The names (mostly) match the variant names in the [`Mastodon.Request`](https://github.com/billstclair/elm-mastodon/blob/master/src/Mastodon/Request.elm)`.Request` type.
-
-The "docs" links open, in a new tab, the relevant section of the documentation at docs.joinmastodon.org.
-
-Type a server name, e.g. `mastodon.social`, in the "Server" box at the top of the screen. As soon as you finish typing the name of a real Mastodon server, it will show its `Instance` entity.
-
-The selector to the right of the "Server" input area shows the servers to which you have successfully logged in. Tokens are saved for each, so you don't need to visit the server authentication page again to login to that account. Selecting one of the servers here changes the "Server" input box, and looks up that server's `Instance` entity, but does NOT change the "Use API for" setting. You need to click "Login" or "Set Server" to do that.
-
-The "Login" button logs in to the displayed "Server". This will use a saved token, if there is one, or redirect to the server's authorization page, where you will need to enter your userid/email and password, or, if there are cookies for that in your browser, just click to approve access. Your `Account` entity will be fetched and displayed.
-
-The "Set Server" button uses the "server" for API requests without logging in. Only a few API requests work without logging in, but this lets you do some exploration of a server without having an account there. The server's `Instance` entity will be fetched and displayed.
-
-The "Logout" button logs out of the "Use API for" server. This will remove it from the server selector and clear its persistent token, requiring you to reauthenticate if you login again.
-
-If you get an error on logging in that your token has expired, you need to "Set Server", "Logout", enter the server name back in the "server" box, and "Login".
-
-The "show tree" checkbox controls whether the "Received" and "Decoded" sections are shown as preformatted text or as expandable trees. If trees are shown, clicking on a string, number, or boolean in the tree will copy its path and value to "selected path" and a textarea, which will appear above the "show tree" checkbox. It also copies the value to the clipboard. This makes it easy to paste values, e.g. IDs, and to view them with line-wrap.
-
-If you hold down the "Alt" key ("Option" on Macintosh) while clicking on a tree value, the value will be copied into the selected path and to the clipboard, but the selected path textarea will not be focused or selected, nor will it be scrolled into view. You can use this when you want to paste somewhere other than a field on this page, and don't want the scroll position to change.
-
-If the "selected path" textarea shows a URL, there will be an "open URL in new tab" link which will do that.
-
-The "prettify" checkbox, which is only shown if "show tree" is not checked, controls whether the JSON output lines are wrapped to fit the screen. If selected, then the non-tree output will not necessarily be valid JSON. If NOT selected, then it will, and you can copy and paste it into environments that expect JSON.
-
-The "elm button names" checkbox controls whether the buttons are labelled with HTTP methods and URLs (with the "/api/v1/" prefix elided) or with the names of the Elm type variants.
-
-The "Headers" section, if enabled, shows the headers received from the server for the last request.
-
-The "Received" section, if enabled, shows the JSON received from the server for the last request.
-
-The "Decoded" section, if enabled, shows the decoded JSON received from the server for the last request. If it differs from "Received", there is either a decoder bug, one or more fields are not yet supported, or the received JSON uses defaults for one or more fields.
-
-The "Clear" button on the same line as the "Prettify" checkbox clears the "Sent", "Received", and "Decoded" sections, making this help easier to see.
-
-This page saves state in the JavaScript `localStorage` database. The "Clear All Persistent State" button near the bottom of the page removes all that state, after you click "Erase" on a confirmation dialog.
-
-This page does NOT use cookies, but logging in to a Mastodon/Pleroma server will set cookies for that server, so if you want to switch users on a server, you need to "Logout" here, go to the Mastodon/Pleroma server's web page, logout there, and "Login" again here.
-
-The "Dark Mode" checkbox toggles between light and dark mode.
-
-If you look at the [code for this page](https://github.com/billstclair/elm-mastodon/blob/master/example/src/Main.elm), and search for `SendGetVerifyCredentials`, you'll see examples of using the `Mastodon.Request` module.
+Help will go here.
             """
 
 
@@ -5721,17 +5284,22 @@ type alias SavedModel =
     , server : String
     , prettify : Bool
     , style : Style
+    , showMetadata : Bool
+    , showReceived : Bool
+    , showEntity : Bool
+    }
+
+
+{-|
+
     , selectedRequest : SelectedRequest
     , username : String
     , accountId : String
     , accountIds : String
-    , showMetadata : Bool
     , q : String
     , resolve : Bool
     , following : Bool
     , groupId : String
-    , showReceived : Bool
-    , showEntity : Bool
     , whichGroups : WhichGroups
     , followReblogs : Bool
     , onlyMedia : Bool
@@ -5760,7 +5328,7 @@ type alias SavedModel =
     , scheduledStatusId : String
     }
 
-
+-}
 modelToSavedModel : Model -> SavedModel
 modelToSavedModel model =
     { loginServer = model.loginServer
@@ -5768,17 +5336,22 @@ modelToSavedModel model =
     , server = model.server
     , prettify = model.prettify
     , style = model.style
+    , showMetadata = model.showMetadata
+    , showReceived = model.showReceived
+    , showEntity = model.showEntity
+    }
+
+
+{-|
+
     , selectedRequest = model.selectedRequest
     , username = model.username
     , accountId = model.accountId
     , accountIds = model.accountIds
-    , showMetadata = model.showMetadata
     , q = model.q
     , resolve = model.resolve
     , following = model.following
     , groupId = model.groupId
-    , showReceived = model.showReceived
-    , showEntity = model.showEntity
     , whichGroups = model.whichGroups
     , followReblogs = model.followReblogs
     , onlyMedia = model.onlyMedia
@@ -5807,7 +5380,7 @@ modelToSavedModel model =
     , scheduledStatusId = model.scheduledStatusId
     }
 
-
+-}
 savedModelToModel : SavedModel -> Model -> Model
 savedModelToModel savedModel model =
     { model
@@ -5816,17 +5389,22 @@ savedModelToModel savedModel model =
         , server = savedModel.server
         , prettify = savedModel.prettify
         , style = savedModel.style
+        , showMetadata = savedModel.showMetadata
+        , showReceived = savedModel.showReceived
+        , showEntity = savedModel.showEntity
+    }
+
+
+{-|
+
         , selectedRequest = savedModel.selectedRequest
         , username = savedModel.username
         , accountId = savedModel.accountId
         , accountIds = savedModel.accountIds
-        , showMetadata = savedModel.showMetadata
         , q = savedModel.q
         , resolve = savedModel.resolve
         , following = savedModel.following
         , groupId = savedModel.groupId
-        , showReceived = savedModel.showReceived
-        , showEntity = savedModel.showEntity
         , whichGroups = savedModel.whichGroups
         , followReblogs = savedModel.followReblogs
         , onlyMedia = savedModel.onlyMedia
@@ -5855,64 +5433,7 @@ savedModelToModel savedModel model =
         , scheduledStatusId = savedModel.scheduledStatusId
     }
 
-
-encodeWhichGroups : WhichGroups -> Value
-encodeWhichGroups whichGroups =
-    JE.string <|
-        case whichGroups of
-            Request.MemberGroups ->
-                "MemberGroups"
-
-            Request.FeaturedGroups ->
-                "FeaturedGroups"
-
-            Request.AdminGroups ->
-                "AdminGroups"
-
-
-whichGroupsDecoder : Decoder WhichGroups
-whichGroupsDecoder =
-    JD.string
-        |> JD.andThen
-            (\s ->
-                case s of
-                    "MemberGroups" ->
-                        JD.succeed Request.MemberGroups
-
-                    "FeaturedGroups" ->
-                        JD.succeed Request.FeaturedGroups
-
-                    "AdminGroups" ->
-                        JD.succeed Request.AdminGroups
-
-                    _ ->
-                        JD.fail <| "Unknown WhichGroups value: " ++ s
-            )
-
-
-{-| Encode `Paging` into `Value`
 -}
-encodePagingInput : PagingInput -> Value
-encodePagingInput { max_id, since_id, min_id, limit } =
-    JE.object
-        [ ( "max_id", JE.string max_id )
-        , ( "since_id", JE.string since_id )
-        , ( "min_id", JE.string min_id )
-        , ( "limit", JE.string limit )
-        ]
-
-
-{-| Decode `PagingInput`
--}
-pagingInputDecoder : Decoder PagingInput
-pagingInputDecoder =
-    JD.succeed PagingInput
-        |> required "max_id" JD.string
-        |> required "since_id" JD.string
-        |> required "min_id" JD.string
-        |> required "limit" JD.string
-
-
 encodeSavedModel : SavedModel -> Value
 encodeSavedModel savedModel =
     JE.object
@@ -5921,17 +5442,22 @@ encodeSavedModel savedModel =
         , ( "server", JE.string savedModel.server )
         , ( "prettify", JE.bool savedModel.prettify )
         , ( "darkstyle", JE.bool <| savedModel.style == DarkStyle )
+        , ( "showMetadata", JE.bool savedModel.showMetadata )
+        , ( "showReceived", JE.bool savedModel.showReceived )
+        , ( "showEntity", JE.bool savedModel.showEntity )
+        ]
+
+
+{-|
+
         , ( "selectedRequest", encodeSelectedRequest savedModel.selectedRequest )
         , ( "username", JE.string savedModel.username )
         , ( "accountId", JE.string savedModel.accountId )
         , ( "accountIds", JE.string savedModel.accountIds )
-        , ( "showMetadata", JE.bool savedModel.showMetadata )
         , ( "q", JE.string savedModel.q )
         , ( "resolve", JE.bool savedModel.resolve )
         , ( "following", JE.bool savedModel.following )
         , ( "groupId", JE.string savedModel.groupId )
-        , ( "showReceived", JE.bool savedModel.showReceived )
-        , ( "showEntity", JE.bool savedModel.showEntity )
         , ( "whichGroups", encodeWhichGroups savedModel.whichGroups )
         , ( "followReblogs", JE.bool savedModel.followReblogs )
         , ( "onlyMedia", JE.bool savedModel.onlyMedia )
@@ -5964,7 +5490,7 @@ encodeSavedModel savedModel =
         , ( "scheduledStatusId", JE.string savedModel.scheduledStatusId )
         ]
 
-
+-}
 savedModelDecoder : Decoder SavedModel
 savedModelDecoder =
     JD.succeed SavedModel
@@ -5985,17 +5511,21 @@ savedModelDecoder =
                     )
             )
             LightStyle
+        |> optional "showMetadata" JD.bool False
+        |> optional "showReceived" JD.bool True
+        |> optional "showEntity" JD.bool False
+
+
+{-|
+
         |> optional "selectedRequest" selectedRequestDecoder LoginSelected
         |> optional "username" JD.string ""
         |> optional "accountId" JD.string ""
         |> optional "accountIds" JD.string ""
-        |> optional "showMetadata" JD.bool False
         |> optional "q" JD.string ""
         |> optional "resolve" JD.bool False
         |> optional "following" JD.bool False
         |> optional "groupId" JD.string ""
-        |> optional "showReceived" JD.bool True
-        |> optional "showEntity" JD.bool False
         |> optional "whichGroups" whichGroupsDecoder Request.MemberGroups
         |> optional "followReblogs" JD.bool True
         |> optional "onlyMedia" JD.bool False
@@ -6023,7 +5553,7 @@ savedModelDecoder =
         |> optional "filterInput" filterInputDecoder emptyFilterInput
         |> optional "scheduledStatusId" JD.string ""
 
-
+-}
 put : String -> Maybe Value -> Cmd Msg
 put key value =
     localStorageSend (LocalStorage.put (Debug.log "put" key) value)
@@ -6130,7 +5660,7 @@ funnelDict =
 {-| Persistent storage keys
 -}
 pk =
-    { model = "model"
+    { model = "websocket-model"
     , token = "token"
     }
 
