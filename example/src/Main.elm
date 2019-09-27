@@ -27,6 +27,7 @@ import Html
         , a
         , div
         , h2
+        , hr
         , input
         , option
         , p
@@ -85,6 +86,7 @@ import Mastodon.Request as Request
         , Request(..)
         , Response
         )
+import Mastodon.WebSocket exposing (Event(..), StreamType(..))
 import PortFunnel.LocalStorage as LocalStorage
 import PortFunnel.WebSocket as WebSocket
 import Regex
@@ -106,6 +108,33 @@ type Dialog
     | ConfirmDialog String String Msg
 
 
+type alias StreamResponse =
+    { index : Int
+    , response : String
+    , event : Event
+    , tree : Maybe JsonTree.Node
+    , treeState : JsonTree.State
+    }
+
+
+type alias Stream =
+    { index : Int
+    , url : String
+    , shown : Bool
+    , responses : List StreamResponse
+    }
+
+
+streamPredicate : Int -> Stream -> Bool
+streamPredicate index stream =
+    stream.index == index
+
+
+streamResponsePredicate : Int -> StreamResponse -> Bool
+streamResponsePredicate index response =
+    response.index == index
+
+
 type alias Model =
     { token : Maybe String
     , server : String
@@ -118,6 +147,7 @@ type alias Model =
     , showEntity : Bool
     , username : String
     , accountId : String
+    , maxStreamResponses : Int
 
     -- Non-persistent below here
     , dialog : Dialog
@@ -138,6 +168,8 @@ type alias Model =
     , hideClientId : Bool
     , tokens : Dict String String
     , account : Maybe Account
+    , streams : List Stream
+    , hashOrId : String
 
     -- Not input state
     , msg : Maybe String
@@ -152,6 +184,7 @@ type Msg
     | OnUrlChange Url
     | SetResponseState JsonTree.State
     | SetEntityState JsonTree.State
+    | SetStreamState Int Int JsonTree.State
     | ExpandAll WhichJson
     | CollapseAll WhichJson
     | SetDialog Dialog
@@ -165,6 +198,11 @@ type Msg
     | ToggleShowReceived
     | ToggleShowEntity
     | ToggleStyle
+    | ToggleStreamShown Int
+    | RemoveStream Int
+    | SetHashOrId String
+    | AddStream StreamType
+    | AddHashOrIdStream (String -> StreamType)
     | ReceiveRedirect (Result ( String, Error ) ( String, App, Cmd Msg ))
     | ReceiveAuthorization (Result ( String, Error ) ( String, Authorization, Account ))
     | ReceiveInstance (Result Error Response)
@@ -331,6 +369,7 @@ init value url key =
     , style = LightStyle
     , username = ""
     , accountId = ""
+    , maxStreamResponses = 5
     , showMetadata = False
     , showReceived = True
     , showEntity = False
@@ -355,6 +394,8 @@ init value url key =
     , hideClientId = hideClientId
     , tokens = Dict.empty
     , account = Nothing
+    , streams = []
+    , hashOrId = ""
 
     -- Not input state
     , msg = msg
@@ -696,6 +737,10 @@ updateInternal msg model =
             { model | entityState = state }
                 |> withNoCmd
 
+        SetStreamState streamIndex responseIndex state ->
+            -- TODO
+            model |> withNoCmd
+
         ExpandAll whichJson ->
             (case whichJson of
                 ResponseJson ->
@@ -709,6 +754,17 @@ updateInternal msg model =
                         | entityState =
                             JsonTree.expandAll model.entityState
                     }
+
+                StreamJson { streamIndex, response } ->
+                    updateStreams model
+                        streamIndex
+                        response.index
+                        (\resp ->
+                            { response
+                                | treeState =
+                                    JsonTree.expandAll resp.treeState
+                            }
+                        )
             )
                 |> withNoCmd
 
@@ -735,6 +791,24 @@ updateInternal msg model =
 
                         Err _ ->
                             model
+
+                StreamJson { streamIndex, response } ->
+                    case response.tree of
+                        Nothing ->
+                            model
+
+                        Just root ->
+                            updateStreams model
+                                streamIndex
+                                response.index
+                                (\resp ->
+                                    { resp
+                                        | treeState =
+                                            JsonTree.collapseToDepth 1
+                                                root
+                                                response.treeState
+                                    }
+                                )
             )
                 |> withNoCmd
 
@@ -788,6 +862,7 @@ updateInternal msg model =
                 , metadata = Nothing
                 , selectedKeyPath = ""
                 , selectedKeyValue = ""
+                , streams = []
             }
                 |> withNoCmd
 
@@ -832,6 +907,64 @@ updateInternal msg model =
                         LightStyle
             }
                 |> withNoCmd
+
+        ToggleStreamShown index ->
+            case LE.find (streamPredicate index) model.streams of
+                Nothing ->
+                    model |> withNoCmd
+
+                Just stream ->
+                    { model
+                        | streams =
+                            LE.setIf (streamPredicate index)
+                                { stream | shown = not stream.shown }
+                                model.streams
+                    }
+                        |> withNoCmd
+
+        RemoveStream index ->
+            { model
+                | streams =
+                    LE.filterNot (streamPredicate index) model.streams
+            }
+                |> withNoCmd
+
+        SetHashOrId hashOrId ->
+            { model | hashOrId = hashOrId }
+                |> withNoCmd
+
+        AddStream streamType ->
+            case model.loginServer of
+                Nothing ->
+                    model |> withNoCmd
+
+                Just server ->
+                    let
+                        index =
+                            case List.head model.streams of
+                                Nothing ->
+                                    0
+
+                                Just s ->
+                                    s.index + 1
+
+                        stream =
+                            { index = index
+                            , url =
+                                Mastodon.WebSocket.streamUrl server
+                                    model.token
+                                    streamType
+                            , shown = True
+                            , responses = []
+                            }
+                    in
+                    { model
+                        | streams = stream :: model.streams
+                    }
+                        |> withNoCmd
+
+        AddHashOrIdStream streamType ->
+            updateInternal (AddStream <| streamType model.hashOrId) model
 
         ReceiveRedirect result ->
             case result of
@@ -1130,6 +1263,31 @@ updateInternal msg model =
 
         ReceiveResponse result ->
             receiveResponse result model
+
+
+updateStreams : Model -> Int -> Int -> (StreamResponse -> StreamResponse) -> Model
+updateStreams model streamIndex responseIndex updater =
+    case LE.find (streamPredicate streamIndex) model.streams of
+        Nothing ->
+            model
+
+        Just stream ->
+            case LE.find (streamResponsePredicate responseIndex) stream.responses of
+                Nothing ->
+                    model
+
+                Just response ->
+                    { model
+                        | streams =
+                            LE.setIf (streamPredicate streamIndex)
+                                { stream
+                                    | responses =
+                                        LE.setIf (streamResponsePredicate responseIndex)
+                                            (updater response)
+                                            stream.responses
+                                }
+                                model.streams
+                    }
 
 
 taggedValueToString : TaggedValue -> String
@@ -1521,6 +1679,63 @@ button =
     enabledButton True
 
 
+separator : String -> Html msg
+separator width =
+    hr
+        [ style "width" width
+        , style "margin" "0 auto"
+        ]
+        []
+
+
+removeStreamUrlBearer : String -> String
+removeStreamUrlBearer string =
+    case Url.fromString string of
+        Nothing ->
+            string
+
+        Just url ->
+            case url.query of
+                Nothing ->
+                    string
+
+                Just query ->
+                    if String.startsWith "access_token=" query then
+                        let
+                            indices =
+                                String.indices "&" query
+
+                            q =
+                                case indices of
+                                    [] ->
+                                        ""
+
+                                    index :: _ ->
+                                        String.dropLeft (index + 1) query
+                        in
+                        Url.toString { url | query = Just q }
+
+                    else
+                        string
+
+
+renderStream : Model -> Stream -> Html Msg
+renderStream model stream =
+    p []
+        [ separator "100%"
+        , button (ToggleStreamShown stream.index) <|
+            if stream.shown then
+                "-"
+
+            else
+                "+"
+        , text " "
+        , button (RemoveStream stream.index) "X"
+        , text " "
+        , text <| removeStreamUrlBearer stream.url
+        ]
+
+
 view : Model -> Document Msg
 view model =
     let
@@ -1572,20 +1787,25 @@ view model =
                                 ]
                     , p []
                         [ loginSelectedUI model
+                        , addStreamUI model
                         ]
                     , p [ style "color" "red" ]
                         [ Maybe.withDefault "" model.msg |> text ]
-                    , checkBox ToggleShowJsonTree model.showJsonTree "show tree"
-                    , if model.showJsonTree then
-                        text ""
+                    , p []
+                        [ checkBox ToggleShowJsonTree model.showJsonTree "show trees"
+                        , if model.showJsonTree then
+                            text ""
 
-                      else
-                        span []
-                            [ text " "
-                            , checkBox TogglePrettify model.prettify "prettify"
-                            ]
-                    , text " "
-                    , button ClearSentReceived "Clear"
+                          else
+                            span []
+                                [ text " "
+                                , checkBox TogglePrettify model.prettify "prettify"
+                                ]
+                        , text " "
+                        , button ClearSentReceived "Clear"
+                        ]
+                    , p [] <|
+                        List.map (renderStream model) model.streams
                     , p [] [ b "Sent:" ]
                     , pre []
                         [ case model.request of
@@ -1741,6 +1961,7 @@ renderJson whichJson model enabled value entity =
 type WhichJson
     = ResponseJson
     | DecodedJson
+    | StreamJson { streamIndex : Int, response : StreamResponse }
 
 
 jsonTreeColors =
@@ -1756,13 +1977,25 @@ jsonTreeColors =
 renderJsonTree : WhichJson -> Model -> Value -> Html Msg
 renderJsonTree whichJson model value =
     let
-        ( setter, treeResponse, state ) =
+        ( setter, maybeTree, state ) =
             case whichJson of
                 ResponseJson ->
-                    ( SetResponseState, model.responseTree, model.responseState )
+                    ( SetResponseState
+                    , Result.toMaybe model.responseTree
+                    , model.responseState
+                    )
 
                 DecodedJson ->
-                    ( SetEntityState, model.entityTree, model.entityState )
+                    ( SetEntityState
+                    , Result.toMaybe model.entityTree
+                    , model.entityState
+                    )
+
+                StreamJson { streamIndex, response } ->
+                    ( SetStreamState streamIndex response.index
+                    , response.tree
+                    , response.treeState
+                    )
 
         config =
             { colors =
@@ -1777,11 +2010,11 @@ renderJsonTree whichJson model value =
             , toMsg = setter
             }
     in
-    case treeResponse of
-        Err _ ->
+    case maybeTree of
+        Nothing ->
             text ""
 
-        Ok root ->
+        Just root ->
             span []
                 [ button (ExpandAll whichJson) "Expand All"
                 , text " "
@@ -1851,8 +2084,7 @@ checkBox msg isChecked label =
 loginSelectedUI : Model -> Html Msg
 loginSelectedUI model =
     p []
-        [ pspace
-        , b "server: "
+        [ b "server: "
         , input
             [ size 30
             , onInput SetServer
@@ -1870,6 +2102,35 @@ loginSelectedUI model =
             [ b "Login" ]
         , text " "
         , button SetLoginServer "Set Server"
+        ]
+
+
+addStreamUI : Model -> Html Msg
+addStreamUI model =
+    let
+        enable =
+            model.hashOrId /= ""
+    in
+    p []
+        [ b "Add Stream"
+        , br
+        , button (AddStream UserStream) "user"
+        , text " "
+        , button (AddStream PublicStream) "public"
+        , text " "
+        , button (AddStream LocalStream) "public:local"
+        , text " "
+        , button (AddStream DirectStream) "direct"
+        , br
+        , textInput "hashtag or id: " 20 SetHashOrId model.hashOrId
+        , br
+        , enabledButton enable (AddHashOrIdStream PublicHashtagStream) "hashtag"
+        , text " "
+        , enabledButton enable (AddHashOrIdStream LocalHashtagStream) "hashtag:local"
+        , text " "
+        , enabledButton enable (AddHashOrIdStream ListStream) "list"
+        , text " "
+        , enabledButton enable (AddHashOrIdStream GroupStream) "group"
         ]
 
 
@@ -2027,47 +2288,10 @@ type alias SavedModel =
     , showMetadata : Bool
     , showReceived : Bool
     , showEntity : Bool
+    , maxStreamResponses : Int
     }
 
 
-{-|
-
-    , selectedRequest : SelectedRequest
-    , username : String
-    , accountId : String
-    , accountIds : String
-    , q : String
-    , resolve : Bool
-    , following : Bool
-    , groupId : String
-    , whichGroups : WhichGroups
-    , followReblogs : Bool
-    , onlyMedia : Bool
-    , pinned : Bool
-    , excludeReplies : Bool
-    , excludeReblogs : Bool
-    , pagingInput : PagingInput
-    , local : Bool
-    , hashtag : String
-    , listId : String
-    , smartPaging : Bool
-    , showUpdateCredentials : Bool
-    , statusId : String
-    , useElmButtonNames : Bool
-    , showPostStatus : Bool
-    , excludedNotificationTypes : List NotificationType
-    , notificationsAccountId : String
-    , notificationId : String
-    , muteNotifications : Bool
-    , groupIds : String
-    , offset : String
-    , listTitle : String
-    , filterId : String
-    , filterInput : FilterInput
-    , scheduledStatusId : String
-    }
-
--}
 modelToSavedModel : Model -> SavedModel
 modelToSavedModel model =
     { loginServer = model.loginServer
@@ -2079,47 +2303,10 @@ modelToSavedModel model =
     , showMetadata = model.showMetadata
     , showReceived = model.showReceived
     , showEntity = model.showEntity
+    , maxStreamResponses = model.maxStreamResponses
     }
 
 
-{-|
-
-    , selectedRequest = model.selectedRequest
-    , username = model.username
-    , accountId = model.accountId
-    , accountIds = model.accountIds
-    , q = model.q
-    , resolve = model.resolve
-    , following = model.following
-    , groupId = model.groupId
-    , whichGroups = model.whichGroups
-    , followReblogs = model.followReblogs
-    , onlyMedia = model.onlyMedia
-    , pinned = model.pinned
-    , excludeReplies = model.excludeReplies
-    , excludeReblogs = model.excludeReblogs
-    , pagingInput = model.pagingInput
-    , local = model.local
-    , hashtag = model.hashtag
-    , listId = model.listId
-    , smartPaging = model.smartPaging
-    , showUpdateCredentials = model.showUpdateCredentials
-    , statusId = model.statusId
-    , useElmButtonNames = model.useElmButtonNames
-    , showPostStatus = model.showPostStatus
-    , excludedNotificationTypes = model.excludedNotificationTypes
-    , notificationsAccountId = model.notificationsAccountId
-    , notificationId = model.notificationId
-    , muteNotifications = model.muteNotifications
-    , groupIds = model.groupIds
-    , offset = model.offset
-    , listTitle = model.listTitle
-    , filterId = model.filterId
-    , filterInput = model.filterInput
-    , scheduledStatusId = model.scheduledStatusId
-    }
-
--}
 savedModelToModel : SavedModel -> Model -> Model
 savedModelToModel savedModel model =
     { model
@@ -2132,47 +2319,10 @@ savedModelToModel savedModel model =
         , showMetadata = savedModel.showMetadata
         , showReceived = savedModel.showReceived
         , showEntity = savedModel.showEntity
+        , maxStreamResponses = savedModel.maxStreamResponses
     }
 
 
-{-|
-
-        , selectedRequest = savedModel.selectedRequest
-        , username = savedModel.username
-        , accountId = savedModel.accountId
-        , accountIds = savedModel.accountIds
-        , q = savedModel.q
-        , resolve = savedModel.resolve
-        , following = savedModel.following
-        , groupId = savedModel.groupId
-        , whichGroups = savedModel.whichGroups
-        , followReblogs = savedModel.followReblogs
-        , onlyMedia = savedModel.onlyMedia
-        , pinned = savedModel.pinned
-        , excludeReplies = savedModel.excludeReplies
-        , excludeReblogs = savedModel.excludeReblogs
-        , pagingInput = savedModel.pagingInput
-        , local = savedModel.local
-        , hashtag = savedModel.hashtag
-        , listId = savedModel.listId
-        , smartPaging = savedModel.smartPaging
-        , showUpdateCredentials = savedModel.showUpdateCredentials
-        , statusId = savedModel.statusId
-        , useElmButtonNames = savedModel.useElmButtonNames
-        , showPostStatus = savedModel.showPostStatus
-        , excludedNotificationTypes = savedModel.excludedNotificationTypes
-        , notificationsAccountId = savedModel.notificationsAccountId
-        , notificationId = savedModel.notificationId
-        , muteNotifications = model.muteNotifications
-        , groupIds = savedModel.groupIds
-        , offset = savedModel.offset
-        , listTitle = savedModel.listTitle
-        , filterId = savedModel.filterId
-        , filterInput = savedModel.filterInput
-        , scheduledStatusId = savedModel.scheduledStatusId
-    }
-
--}
 encodeSavedModel : SavedModel -> Value
 encodeSavedModel savedModel =
     JE.object
@@ -2185,6 +2335,7 @@ encodeSavedModel savedModel =
         , ( "showMetadata", JE.bool savedModel.showMetadata )
         , ( "showReceived", JE.bool savedModel.showReceived )
         , ( "showEntity", JE.bool savedModel.showEntity )
+        , ( "maxStreamResponses", JE.int savedModel.maxStreamResponses )
         ]
 
 
@@ -2212,6 +2363,7 @@ savedModelDecoder =
         |> optional "showMetadata" JD.bool False
         |> optional "showReceived" JD.bool True
         |> optional "showEntity" JD.bool False
+        |> optional "maxStreamResponses" JD.int 5
 
 
 put : String -> Maybe Value -> Cmd Msg
