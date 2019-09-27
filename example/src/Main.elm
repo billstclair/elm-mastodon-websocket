@@ -1,7 +1,7 @@
 ----------------------------------------------------------------------
 --
 -- Main.elm
--- Example of using billstclair/elm-mastodon
+-- Example of using billstclair/elm-mastodon-websocket
 -- Copyright (c) 2019 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
@@ -75,25 +75,15 @@ import Mastodon.Entity as Entity
         , App
         , Authorization
         , Entity(..)
-        , Field
-        , FilterContext(..)
-        , Focus
-        , NotificationType(..)
-        , Privacy(..)
-        , Visibility(..)
         )
 import Mastodon.Login as Login exposing (FetchAccountOrRedirect(..))
 import Mastodon.PortFunnels as PortFunnels exposing (FunnelDict, Handler(..), State)
 import Mastodon.Request as Request
     exposing
         ( Error(..)
-        , FieldUpdate
-        , Paging
-        , PollDefinition
         , RawRequest
         , Request(..)
         , Response
-        , emptyPaging
         )
 import PortFunnel.LocalStorage as LocalStorage
 import PortFunnel.WebSocket as WebSocket
@@ -114,59 +104,6 @@ type Started
 type Dialog
     = NoDialog
     | ConfirmDialog String String Msg
-
-
-type alias FocusInput =
-    { x : String, y : String }
-
-
-type alias FilterInput =
-    { phrase : String
-    , context : List FilterContext
-    , irreversible : Bool
-    , whole_word : Bool
-    , expires_in : String
-    }
-
-
-emptyFilterInput : FilterInput
-emptyFilterInput =
-    { phrase = ""
-    , context = [ HomeContext ]
-    , irreversible = False
-    , whole_word = False
-    , expires_in = ""
-    }
-
-
-isFilterInputValid : FilterInput -> Bool
-isFilterInputValid { phrase, context, expires_in } =
-    (phrase /= "")
-        && (context /= [])
-        && ((expires_in == "")
-                || (Nothing /= String.toInt expires_in)
-           )
-
-
-encodeFilterInput : FilterInput -> Value
-encodeFilterInput { phrase, context, irreversible, whole_word, expires_in } =
-    JE.object
-        [ ( "phrase", JE.string phrase )
-        , ( "context", JE.list ED.encodeFilterContext context )
-        , ( "irreversible", JE.bool irreversible )
-        , ( "whole_word", JE.bool whole_word )
-        , ( "expires_in", JE.string expires_in )
-        ]
-
-
-filterInputDecoder : Decoder FilterInput
-filterInputDecoder =
-    JD.succeed FilterInput
-        |> required "phrase" JD.string
-        |> required "context" (JD.list ED.filterContextDecoder)
-        |> required "irreversible" JD.bool
-        |> required "whole_word" JD.bool
-        |> required "expires_in" JD.string
 
 
 type alias Model =
@@ -2251,49 +2188,6 @@ encodeSavedModel savedModel =
         ]
 
 
-{-|
-
-        , ( "selectedRequest", encodeSelectedRequest savedModel.selectedRequest )
-        , ( "username", JE.string savedModel.username )
-        , ( "accountId", JE.string savedModel.accountId )
-        , ( "accountIds", JE.string savedModel.accountIds )
-        , ( "q", JE.string savedModel.q )
-        , ( "resolve", JE.bool savedModel.resolve )
-        , ( "following", JE.bool savedModel.following )
-        , ( "groupId", JE.string savedModel.groupId )
-        , ( "whichGroups", encodeWhichGroups savedModel.whichGroups )
-        , ( "followReblogs", JE.bool savedModel.followReblogs )
-        , ( "onlyMedia", JE.bool savedModel.onlyMedia )
-        , ( "pinned", JE.bool savedModel.pinned )
-        , ( "excludeReplies", JE.bool savedModel.excludeReplies )
-        , ( "excludeReblogs", JE.bool savedModel.excludeReblogs )
-        , ( "pagingInput", encodePagingInput savedModel.pagingInput )
-        , ( "local", JE.bool savedModel.local )
-        , ( "hashtag", JE.string savedModel.hashtag )
-        , ( "listId", JE.string savedModel.listId )
-        , ( "smartPaging", JE.bool savedModel.smartPaging )
-        , ( "showJsonTree", JE.bool savedModel.showJsonTree )
-        , ( "showUpdateCredentials", JE.bool savedModel.showUpdateCredentials )
-        , ( "statusId", JE.string savedModel.statusId )
-        , ( "useElmButtonNames", JE.bool savedModel.useElmButtonNames )
-        , ( "showPostStatus", JE.bool savedModel.showPostStatus )
-        , ( "excludedNotificationTypes"
-          , JE.list ED.encodeNotificationType savedModel.excludedNotificationTypes
-          )
-        , ( "notificationsAccountId"
-          , JE.string savedModel.notificationsAccountId
-          )
-        , ( "notificationId", JE.string savedModel.notificationId )
-        , ( "muteNotifications", JE.bool savedModel.muteNotifications )
-        , ( "groupIds", JE.string savedModel.groupIds )
-        , ( "offset", JE.string savedModel.offset )
-        , ( "listTitle", JE.string savedModel.listTitle )
-        , ( "filterId", JE.string savedModel.filterId )
-        , ( "filterInput", encodeFilterInput savedModel.filterInput )
-        , ( "scheduledStatusId", JE.string savedModel.scheduledStatusId )
-        ]
-
--}
 savedModelDecoder : Decoder SavedModel
 savedModelDecoder =
     JD.succeed SavedModel
@@ -2320,44 +2214,6 @@ savedModelDecoder =
         |> optional "showEntity" JD.bool False
 
 
-{-|
-
-        |> optional "selectedRequest" selectedRequestDecoder LoginSelected
-        |> optional "username" JD.string ""
-        |> optional "accountId" JD.string ""
-        |> optional "accountIds" JD.string ""
-        |> optional "q" JD.string ""
-        |> optional "resolve" JD.bool False
-        |> optional "following" JD.bool False
-        |> optional "groupId" JD.string ""
-        |> optional "whichGroups" whichGroupsDecoder Request.MemberGroups
-        |> optional "followReblogs" JD.bool True
-        |> optional "onlyMedia" JD.bool False
-        |> optional "pinned" JD.bool False
-        |> optional "excludeReplies" JD.bool False
-        |> optional "excludeReblogs" JD.bool False
-        |> optional "pagingInput" pagingInputDecoder emptyPagingInput
-        |> optional "local" JD.bool False
-        |> optional "hashtag" JD.string ""
-        |> optional "listId" JD.string ""
-        |> optional "smartPaging" JD.bool False
-        |> optional "showJsonTree" JD.bool True
-        |> optional "showUpdateCredentials" JD.bool False
-        |> optional "statusId" JD.string ""
-        |> optional "useElmButtonNames" JD.bool False
-        |> optional "showPostStatus" JD.bool False
-        |> optional "excludedNotificationTypes" (JD.list ED.notificationTypeDecoder) []
-        |> optional "notificationsAccountId" JD.string ""
-        |> optional "notificationId" JD.string ""
-        |> optional "muteNotifications" JD.bool True
-        |> optional "groupIds" JD.string ""
-        |> optional "offset" JD.string ""
-        |> optional "listTitle" JD.string ""
-        |> optional "filterId" JD.string ""
-        |> optional "filterInput" filterInputDecoder emptyFilterInput
-        |> optional "scheduledStatusId" JD.string ""
-
--}
 put : String -> Maybe Value -> Cmd Msg
 put key value =
     localStorageSend (LocalStorage.put (Debug.log "put" key) value)
