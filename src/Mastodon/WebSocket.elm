@@ -61,17 +61,17 @@ type StreamType
     | GroupStream String
 
 
-{-| Convert a host, access token, and stream type into a URL for the WebSocket connection.
+{-| Convert a streaming API (e.g. "rss://mastodon.social"), access token, and stream type into a URL for the WebSocket connection.
 
-    streamUrl host accessToken streamType
+    streamUrl streaming_api accessToken streamType
 
 If `accessToken` is `Nothing`, will attempt to connect without authentication. This works for the following `StreamType`s: [TODO]
 
 -}
 streamUrl : String -> Maybe String -> StreamType -> String
-streamUrl host accessToken streamType =
+streamUrl streaming_api accessToken streamType =
     Builder.crossOrigin
-        ("https://" ++ host)
+        streaming_api
         [ "api", "v1", "streaming" ]
         (streamTypeToQueryParameters accessToken streamType)
 

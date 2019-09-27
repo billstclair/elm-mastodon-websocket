@@ -76,6 +76,7 @@ import Mastodon.Entity as Entity
         , App
         , Authorization
         , Entity(..)
+        , Instance
         )
 import Mastodon.Login as Login exposing (FetchAccountOrRedirect(..))
 import Mastodon.PortFunnels as PortFunnels exposing (FunnelDict, Handler(..), State)
@@ -168,6 +169,7 @@ type alias Model =
     , hideClientId : Bool
     , tokens : Dict String String
     , account : Maybe Account
+    , instance : Maybe Instance
     , streams : List Stream
     , hashOrId : String
 
@@ -209,6 +211,7 @@ type Msg
     | ReceiveFetchAccount (Result ( String, Error ) ( String, String, Account ))
     | ReceiveGetVerifyCredentials (Result Error Response)
     | ReceiveAccountIdRelationships Bool (Result Error Response)
+    | SetInstance (Result Error Response)
     | Process Value
     | SetLoginServer
     | Login
@@ -394,6 +397,7 @@ init value url key =
     , hideClientId = hideClientId
     , tokens = Dict.empty
     , account = Nothing
+    , instance = Nothing
     , streams = []
     , hashOrId = ""
 
@@ -934,11 +938,11 @@ updateInternal msg model =
                 |> withNoCmd
 
         AddStream streamType ->
-            case model.loginServer of
+            case model.instance of
                 Nothing ->
                     model |> withNoCmd
 
-                Just server ->
+                Just instance ->
                     let
                         index =
                             case List.head model.streams of
@@ -951,7 +955,8 @@ updateInternal msg model =
                         stream =
                             { index = index
                             , url =
-                                Mastodon.WebSocket.streamUrl server
+                                Mastodon.WebSocket.streamUrl
+                                    instance.urls.streaming_api
                                     model.token
                                     streamType
                             , shown = True
@@ -1093,10 +1098,35 @@ updateInternal msg model =
                                         |> updateJsonTrees
                             in
                             mdl
-                                |> withCmd (getAccountIdRelationships False mdl)
+                                |> withCmds
+                                    [ getAccountIdRelationships False mdl
+                                    , Request.serverRequest (\id -> SetInstance)
+                                        []
+                                        { server = model.server, token = Nothing }
+                                        ()
+                                        (InstanceRequest Request.GetInstance)
+                                    ]
 
                         _ ->
                             model |> withNoCmd
+
+        SetInstance result ->
+            let
+                instance =
+                    case result of
+                        Err _ ->
+                            Nothing
+
+                        Ok response ->
+                            case response.entity of
+                                InstanceEntity inst ->
+                                    Just inst
+
+                                _ ->
+                                    Nothing
+            in
+            { model | instance = instance }
+                |> withNoCmd
 
         ReceiveAccountIdRelationships showResult result ->
             case result of
@@ -1225,6 +1255,7 @@ updateInternal msg model =
                         | server = ""
                         , loginServer = Nothing
                         , account = Nothing
+                        , instance = Nothing
                         , tokens = Dict.remove server model.tokens
                         , token = Nothing
                         , request = Nothing
@@ -1234,6 +1265,7 @@ updateInternal msg model =
                         , selectedKeyPath = ""
                         , selectedKeyValue = ""
                         , msg = Nothing
+                        , streams = []
                     }
                         |> updateJsonTrees
                         |> withCmd (putToken server Nothing)
@@ -1507,6 +1539,14 @@ decodeErrorToString error =
 applyResponseSideEffects : Response -> Model -> Model
 applyResponseSideEffects response model =
     case response.request of
+        InstanceRequest Request.GetInstance ->
+            case response.entity of
+                InstanceEntity instance ->
+                    { model | instance = Just instance }
+
+                _ ->
+                    model
+
         _ ->
             model
 
@@ -1690,7 +1730,7 @@ separator width =
 
 removeStreamUrlBearer : String -> String
 removeStreamUrlBearer string =
-    case Url.fromString string of
+    case Url.fromString <| String.replace "wss:" "https:" string of
         Nothing ->
             string
 
@@ -1713,7 +1753,11 @@ removeStreamUrlBearer string =
                                     index :: _ ->
                                         String.dropLeft (index + 1) query
                         in
-                        Url.toString { url | query = Just q }
+                        Url.toString
+                            { url
+                                | query = Just q
+                            }
+                            |> String.replace "https:" "wss:"
 
                     else
                         string
@@ -1787,7 +1831,11 @@ view model =
                                 ]
                     , p []
                         [ loginSelectedUI model
-                        , addStreamUI model
+                        , if model.instance == Nothing then
+                            text ""
+
+                          else
+                            addStreamUI model
                         ]
                     , p [ style "color" "red" ]
                         [ Maybe.withDefault "" model.msg |> text ]
