@@ -1005,6 +1005,8 @@ updateInternal msg model =
                                 , token = Just authorization.token
                                 , loginServer = Just server
                                 , account = Just account
+                                , instance = Nothing
+                                , streams = []
                                 , request =
                                     -- Fake the request
                                     Just <|
@@ -1017,7 +1019,11 @@ updateInternal msg model =
                                 |> updateJsonTrees
                     in
                     mdl2
-                        |> withCmds [ cmd, getAccountIdRelationships False mdl ]
+                        |> withCmds
+                            [ cmd
+                            , getAccountIdRelationships False mdl
+                            , getLoggedInInstance model.server
+                            ]
 
         ReceiveFetchAccount result ->
             case result of
@@ -1043,6 +1049,8 @@ updateInternal msg model =
                                 | msg = Nothing
                                 , server = loginServer
                                 , loginServer = Just loginServer
+                                , instance = Nothing
+                                , streams = []
                                 , token = Just token
                                 , account = Just account
                                 , request = Just request
@@ -1052,7 +1060,10 @@ updateInternal msg model =
                                 |> updateJsonTrees
                     in
                     mdl
-                        |> withCmd (getAccountIdRelationships False mdl)
+                        |> withCmds
+                            [ getAccountIdRelationships False mdl
+                            , getLoggedInInstance model.server
+                            ]
 
         ReceiveInstance result ->
             case result of
@@ -1100,11 +1111,7 @@ updateInternal msg model =
                             mdl
                                 |> withCmds
                                     [ getAccountIdRelationships False mdl
-                                    , Request.serverRequest (\id -> SetInstance)
-                                        []
-                                        { server = model.server, token = Nothing }
-                                        ()
-                                        (InstanceRequest Request.GetInstance)
+                                    , getLoggedInInstance model.server
                                     ]
 
                         _ ->
@@ -1201,6 +1208,8 @@ updateInternal msg model =
                 { model
                     | msg = Nothing
                     , loginServer = Nothing
+                    , instance = Nothing
+                    , streams = []
                     , request = Nothing
                     , response = Nothing
                     , entity = Nothing
@@ -1215,6 +1224,8 @@ updateInternal msg model =
                     mdl =
                         { model
                             | loginServer = Just model.server
+                            , instance = Nothing
+                            , streams = []
                             , token = Nothing
                             , account = Nothing
                         }
@@ -1295,6 +1306,15 @@ updateInternal msg model =
 
         ReceiveResponse result ->
             receiveResponse result model
+
+
+getLoggedInInstance : String -> Cmd Msg
+getLoggedInInstance server =
+    Request.serverRequest (\id -> SetInstance)
+        []
+        { server = server, token = Nothing }
+        ()
+        (InstanceRequest Request.GetInstance)
 
 
 updateStreams : Model -> Int -> Int -> (StreamResponse -> StreamResponse) -> Model
