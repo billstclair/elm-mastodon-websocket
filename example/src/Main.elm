@@ -605,32 +605,125 @@ socketHandler response state mdl =
     let
         model =
             { mdl | funnelState = state }
-    in
-    case response of
-        WebSocket.ErrorResponse error ->
-            case error of
-                WebSocket.SocketAlreadyOpenError _ ->
-                    socketHandler
-                        (WebSocket.ConnectedResponse { key = "", description = "" })
-                        state
-                        model
+
+        ( ( eventString, event ), k, msg ) =
+            case response of
+                WebSocket.ErrorResponse error ->
+                    ( ( "", NoEvent ), "", Just <| WebSocket.errorToString error )
+
+                WebSocket.MessageReceivedResponse { key, message } ->
+                    ( ( message
+                      , case Mastodon.WebSocket.decodeEvent message of
+                            Err err ->
+                                UnknownEvent message
+
+                            Ok ev ->
+                                ev
+                      )
+                    , key
+                    , Nothing
+                    )
+
+                WebSocket.ClosedResponse { expected, reason, key } ->
+                    let
+                        string =
+                            "Socket Closed, "
+                                ++ (if expected then
+                                        "expected"
+
+                                    else
+                                        "unexpected"
+                                   )
+                                ++ ", because: "
+                                ++ reason
+                    in
+                    ( ( string
+                      , NoEvent
+                      )
+                    , key
+                    , Nothing
+                    )
+
+                WebSocket.ConnectedResponse { key, description } ->
+                    ( ( "Connected: " ++ description
+                      , NoEvent
+                      )
+                    , key
+                    , Nothing
+                    )
 
                 _ ->
-                    { model | msg = Just <| WebSocket.errorToString error }
-                        |> withNoCmd
+                    ( ( ""
+                      , NoEvent
+                      )
+                    , ""
+                    , Nothing
+                    )
+    in
+    addResponse eventString event k model
+        |> withNoCmd
 
-        WebSocket.MessageReceivedResponse received ->
-            model |> withNoCmd
 
-        WebSocket.ClosedResponse { expected, reason } ->
+addResponse : String -> Event -> String -> Model -> Model
+addResponse message event key model =
+    case String.toInt key of
+        Nothing ->
             model
-                |> withNoCmd
 
-        WebSocket.ConnectedResponse _ ->
-            model |> withNoCmd
+        Just index ->
+            let
+                streams =
+                    model.streams
+            in
+            case LE.find (streamPredicate index) streams of
+                Nothing ->
+                    model
 
-        _ ->
-            model |> withNoCmd
+                Just stream ->
+                    let
+                        responseIndex =
+                            case List.head stream.responses of
+                                Nothing ->
+                                    0
+
+                                Just head ->
+                                    head.index + 1
+
+                        ( tree, state ) =
+                            case JD.decodeString JD.value message of
+                                Err _ ->
+                                    ( Nothing, JsonTree.defaultState )
+
+                                Ok value ->
+                                    let
+                                        result =
+                                            JsonTree.parseValue value
+                                    in
+                                    case result of
+                                        Err _ ->
+                                            ( Nothing, JsonTree.defaultState )
+
+                                        Ok root ->
+                                            ( Just root
+                                            , JsonTree.collapseToDepth 1
+                                                root
+                                                JsonTree.defaultState
+                                            )
+
+                        response =
+                            { index = responseIndex
+                            , response = message
+                            , event = event
+                            , tree = tree
+                            , treeState = state
+                            }
+                    in
+                    { model
+                        | streams =
+                            LE.setIf (streamPredicate index)
+                                { stream | responses = response :: stream.responses }
+                                streams
+                    }
 
 
 emptyJsonTree : Result JD.Error JsonTree.Node
@@ -927,49 +1020,25 @@ updateInternal msg model =
                         |> withNoCmd
 
         RemoveStream index ->
+            let
+                message =
+                    WebSocket.makeClose <| String.fromInt index
+            in
             { model
                 | streams =
                     LE.filterNot (streamPredicate index) model.streams
             }
-                |> withNoCmd
+                |> withCmd (webSocketSend message)
 
         SetHashOrId hashOrId ->
             { model | hashOrId = hashOrId }
                 |> withNoCmd
 
         AddStream streamType ->
-            case model.instance of
-                Nothing ->
-                    model |> withNoCmd
+            addStream streamType model
 
-                Just instance ->
-                    let
-                        index =
-                            case List.head model.streams of
-                                Nothing ->
-                                    0
-
-                                Just s ->
-                                    s.index + 1
-
-                        stream =
-                            { index = index
-                            , url =
-                                Mastodon.WebSocket.streamUrl
-                                    instance.urls.streaming_api
-                                    model.token
-                                    streamType
-                            , shown = True
-                            , responses = []
-                            }
-                    in
-                    { model
-                        | streams = stream :: model.streams
-                    }
-                        |> withNoCmd
-
-        AddHashOrIdStream streamType ->
-            updateInternal (AddStream <| streamType model.hashOrId) model
+        AddHashOrIdStream streamTyper ->
+            addStream (streamTyper model.hashOrId) model
 
         ReceiveRedirect result ->
             case result of
@@ -1306,6 +1375,42 @@ updateInternal msg model =
 
         ReceiveResponse result ->
             receiveResponse result model
+
+
+addStream : StreamType -> Model -> ( Model, Cmd Msg )
+addStream streamType model =
+    case model.instance of
+        Nothing ->
+            model |> withNoCmd
+
+        Just instance ->
+            let
+                index =
+                    case List.head model.streams of
+                        Nothing ->
+                            0
+
+                        Just s ->
+                            s.index + 1
+
+                stream =
+                    { index = index
+                    , url =
+                        Mastodon.WebSocket.streamUrl
+                            instance.urls.streaming_api
+                            model.token
+                            streamType
+                    , shown = True
+                    , responses = []
+                    }
+
+                message =
+                    WebSocket.makeOpenWithKey (String.fromInt index) stream.url
+            in
+            { model
+                | streams = stream :: model.streams
+            }
+                |> withCmd (webSocketSend message)
 
 
 getLoggedInInstance : String -> Cmd Msg

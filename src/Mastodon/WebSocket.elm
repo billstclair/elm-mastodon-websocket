@@ -84,7 +84,18 @@ streamTypeToQueryParameters accessToken streamType =
                 []
 
             Just token ->
-                [ Builder.string "access_token" token ]
+                let
+                    bearer =
+                        "Bearer "
+
+                    tok =
+                        if String.startsWith bearer token then
+                            String.dropLeft (String.length bearer) token
+
+                        else
+                            token
+                in
+                [ Builder.string "access_token" tok ]
         , case streamType of
             UserStream ->
                 [ Builder.string "stream" "user" ]
@@ -156,6 +167,10 @@ type Event
     | NotificationEvent Notification
     | DeleteEvent String
     | FiltersChangedEvent
+      -- A message that can't be decoded
+    | UnknownEvent String
+      -- When the socket connection is closed
+    | ClosedEvent String
 
 
 {-| Decode a string from the WebSocket stream.
