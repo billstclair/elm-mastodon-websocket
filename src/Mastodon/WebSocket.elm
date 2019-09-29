@@ -160,6 +160,19 @@ close state key =
 
 
 {-| An event received over the websocket.
+
+`NoEvent`, `UpdateEvent`, `NotificationEvent`, `DeleteEvent`, and
+`FiltersChangedEvent` come over the wire as specified at
+<https://docs.joinmastodon.org/api/streaming>.
+
+`ConnectedEvent` is delivered as soon as the initial connection is made, right
+after your send a `PortFunnels.WebSocket.makeOpen` message over the socket.
+
+`ReconnectedEvent` is delivered if the connection is lost and auto-reconnected.
+
+`ClosedEvent` is delivered if the reconnection fails, or you explicitly send
+a `PortFunnels.WebSocket.makeClose` message.
+
 -}
 type Event
     = NoEvent
