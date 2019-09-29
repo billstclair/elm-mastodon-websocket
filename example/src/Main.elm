@@ -123,6 +123,7 @@ type alias Stream =
     , url : String
     , shown : Bool
     , responses : List StreamResponse
+    , paused : Bool
     }
 
 
@@ -201,10 +202,12 @@ type Msg
     | ToggleShowEntity
     | ToggleStyle
     | ToggleStreamShown Int
+    | ToggleStreamPaused Int
     | RemoveStream Int
     | SetHashOrId String
     | AddStream StreamType
     | AddHashOrIdStream (String -> StreamType)
+    | SetStreamResponseState Int Int JsonTree.State
     | ReceiveRedirect (Result ( String, Error ) ( String, App, Cmd Msg ))
     | ReceiveAuthorization (Result ( String, Error ) ( String, Authorization, Account ))
     | ReceiveInstance (Result Error Response)
@@ -613,7 +616,9 @@ socketHandler response state mdl =
 
                 WebSocket.MessageReceivedResponse { key, message } ->
                     ( ( message
-                      , case Mastodon.WebSocket.decodeEvent message of
+                      , case
+                            Mastodon.WebSocket.decodeEvent message
+                        of
                             Err err ->
                                 UnknownEvent message
 
@@ -637,8 +642,8 @@ socketHandler response state mdl =
                                 ++ ", because: "
                                 ++ reason
                     in
-                    ( ( string
-                      , NoEvent
+                    ( ( "closed"
+                      , ClosedEvent string
                       )
                     , key
                     , Nothing
@@ -664,6 +669,44 @@ socketHandler response state mdl =
         |> withNoCmd
 
 
+maxResponses : Int
+maxResponses =
+    5
+
+
+encodeEventValue : Int -> Event -> Value
+encodeEventValue index event =
+    let
+        ( ev, value ) =
+            case event of
+                NoEvent ->
+                    ( "nothing", JE.null )
+
+                UpdateEvent status ->
+                    ( "update", ED.encodeStatus status )
+
+                NotificationEvent notification ->
+                    ( "notification", ED.encodeNotification notification )
+
+                DeleteEvent id ->
+                    ( "delete", JE.string id )
+
+                FiltersChangedEvent ->
+                    ( "filters_changed", JE.null )
+
+                UnknownEvent string ->
+                    ( "unknown", JE.string string )
+
+                ClosedEvent string ->
+                    ( "closed", JE.string string )
+    in
+    JE.object
+        [ ( "_index", JE.int index )
+        , ( "event", JE.string ev )
+        , ( "payload", value )
+        ]
+
+
 addResponse : String -> Event -> String -> Model -> Model
 addResponse message event key model =
     case String.toInt key of
@@ -680,50 +723,56 @@ addResponse message event key model =
                     model
 
                 Just stream ->
-                    let
-                        responseIndex =
-                            case List.head stream.responses of
-                                Nothing ->
-                                    0
+                    if stream.paused then
+                        model
 
-                                Just head ->
-                                    head.index + 1
+                    else
+                        let
+                            responseIndex =
+                                case List.head stream.responses of
+                                    Nothing ->
+                                        0
 
-                        ( tree, state ) =
-                            case JD.decodeString JD.value message of
-                                Err _ ->
-                                    ( Nothing, JsonTree.defaultState )
+                                    Just head ->
+                                        head.index + 1
 
-                                Ok value ->
-                                    let
-                                        result =
-                                            JsonTree.parseValue value
-                                    in
-                                    case result of
-                                        Err _ ->
-                                            ( Nothing, JsonTree.defaultState )
+                            ( tree, state ) =
+                                let
+                                    value =
+                                        encodeEventValue responseIndex event
 
-                                        Ok root ->
-                                            ( Just root
-                                            , JsonTree.collapseToDepth 1
-                                                root
-                                                JsonTree.defaultState
-                                            )
+                                    result =
+                                        JsonTree.parseValue value
+                                in
+                                case result of
+                                    Err _ ->
+                                        ( Nothing, JsonTree.defaultState )
 
-                        response =
-                            { index = responseIndex
-                            , response = message
-                            , event = event
-                            , tree = tree
-                            , treeState = state
-                            }
-                    in
-                    { model
-                        | streams =
-                            LE.setIf (streamPredicate index)
-                                { stream | responses = response :: stream.responses }
-                                streams
-                    }
+                                    Ok root ->
+                                        ( Just root
+                                        , JsonTree.collapseToDepth 1
+                                            root
+                                            JsonTree.defaultState
+                                        )
+
+                            response =
+                                { index = responseIndex
+                                , response = message
+                                , event = event
+                                , tree = tree
+                                , treeState = state
+                                }
+                        in
+                        { model
+                            | streams =
+                                LE.setIf (streamPredicate index)
+                                    { stream
+                                        | responses =
+                                            (response :: stream.responses)
+                                                |> List.take maxResponses
+                                    }
+                                    streams
+                        }
 
 
 emptyJsonTree : Result JD.Error JsonTree.Node
@@ -1019,6 +1068,20 @@ updateInternal msg model =
                     }
                         |> withNoCmd
 
+        ToggleStreamPaused index ->
+            case LE.find (streamPredicate index) model.streams of
+                Nothing ->
+                    model |> withNoCmd
+
+                Just stream ->
+                    { model
+                        | streams =
+                            LE.setIf (streamPredicate index)
+                                { stream | paused = not stream.paused }
+                                model.streams
+                    }
+                        |> withNoCmd
+
         RemoveStream index ->
             let
                 message =
@@ -1039,6 +1102,30 @@ updateInternal msg model =
 
         AddHashOrIdStream streamTyper ->
             addStream (streamTyper model.hashOrId) model
+
+        SetStreamResponseState streamIndex index state ->
+            case LE.find (streamPredicate streamIndex) model.streams of
+                Nothing ->
+                    model |> withNoCmd
+
+                Just stream ->
+                    case LE.find (streamResponsePredicate index) stream.responses of
+                        Nothing ->
+                            model |> withNoCmd
+
+                        Just response ->
+                            { model
+                                | streams =
+                                    LE.setIf (streamPredicate streamIndex)
+                                        { stream
+                                            | responses =
+                                                LE.setIf (streamResponsePredicate index)
+                                                    { response | treeState = state }
+                                                    stream.responses
+                                        }
+                                        model.streams
+                            }
+                                |> withNoCmd
 
         ReceiveRedirect result ->
             case result of
@@ -1402,6 +1489,7 @@ addStream streamType model =
                             streamType
                     , shown = True
                     , responses = []
+                    , paused = False
                     }
 
                 message =
@@ -1899,10 +1987,40 @@ renderStream model stream =
             else
                 "+"
         , text " "
+        , button (ToggleStreamPaused stream.index) <|
+            if stream.paused then
+                "On"
+
+            else
+                "Off"
+        , text " "
         , button (RemoveStream stream.index) "X"
         , text " "
         , text <| removeStreamUrlBearer stream.url
+        , br
+        , if not stream.shown then
+            text ""
+
+          else
+            span []
+                (List.map (renderStreamResponse model.style stream.index) stream.responses
+                    |> List.intersperse (separator "70%")
+                )
         ]
+
+
+renderStreamResponse : Style -> Int -> StreamResponse -> Html Msg
+renderStreamResponse style streamIndex { index, response, tree, treeState } =
+    let
+        config =
+            jsonTreeConfig style (SetStreamResponseState streamIndex index)
+    in
+    case tree of
+        Nothing ->
+            text response
+
+        Just root ->
+            JsonTree.view root config treeState
 
 
 view : Model -> Document Msg
@@ -1964,6 +2082,8 @@ view model =
                         ]
                     , p [ style "color" "red" ]
                         [ Maybe.withDefault "" model.msg |> text ]
+                    , p [] <|
+                        List.map (renderStream model) model.streams
                     , p []
                         [ checkBox ToggleShowJsonTree model.showJsonTree "show trees"
                         , if model.showJsonTree then
@@ -1977,8 +2097,6 @@ view model =
                         , text " "
                         , button ClearSentReceived "Clear"
                         ]
-                    , p [] <|
-                        List.map (renderStream model) model.streams
                     , p [] [ b "Sent:" ]
                     , pre []
                         [ case model.request of
@@ -2147,6 +2265,21 @@ jsonTreeColors =
     }
 
 
+jsonTreeConfig : Style -> (JsonTree.State -> Msg) -> JsonTree.Config Msg
+jsonTreeConfig style setter =
+    { colors =
+        if style == DarkStyle then
+            jsonTreeColors.dark
+
+        else
+            jsonTreeColors.light
+
+    -- Should copy the text to a <TextArea> on select.
+    , onSelect = Nothing
+    , toMsg = setter
+    }
+
+
 renderJsonTree : WhichJson -> Model -> Value -> Html Msg
 renderJsonTree whichJson model value =
     let
@@ -2171,17 +2304,7 @@ renderJsonTree whichJson model value =
                     )
 
         config =
-            { colors =
-                if model.style == DarkStyle then
-                    jsonTreeColors.dark
-
-                else
-                    jsonTreeColors.light
-
-            -- Should copy the text to a <TextArea> on select.
-            , onSelect = Nothing
-            , toMsg = setter
-            }
+            jsonTreeConfig model.style setter
     in
     case maybeTree of
         Nothing ->
@@ -2379,7 +2502,23 @@ help model =
         """
 **Help**
 
-Help will go here.
+Type a server name, e.g. "mastodon.social" in the "server" field. If it is a valid Mastodon server, its instance entity will appear. Click "Login" to login as a registered user, or "Set Server" to use the server without logging in.
+
+Click "Logout" to remove the current server's remembered access token.
+
+Click on one of the choices below "Add Stream" to add that type of WebSocket stream. The "hashtag or id" is necessary for the "hashtag", "hashtag:local", "list", and "group" streams.
+
+A section will appear for the stream, showing the URL to connect, with the access token removed, and filling up as events come in.
+
+Click "-" to hide a stream's contents and "+" to show it again.
+
+Click "Off" to stop updating a stream's contents, and "On" to start again.
+
+Click "X" to remove a stream and close its websocket connection.
+
+Click "Clear All Persistent State" below this help to remove the remembered access tokens and preferences.
+
+Toggle the "Dark Mode" checkbox to switch appearance.
             """
 
 

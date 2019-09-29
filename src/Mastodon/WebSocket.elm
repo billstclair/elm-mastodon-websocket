@@ -12,7 +12,7 @@
 
 module Mastodon.WebSocket exposing
     ( StreamType(..), Event(..)
-    , streamUrl, open, close, decodeEvent
+    , streamUrl, open, close, decodeEvent, eventDecoder
     )
 
 {-| The WebSocket API for the Mastodon Social Network.
@@ -25,7 +25,7 @@ module Mastodon.WebSocket exposing
 
 # Functions
 
-@docs streamUrl, open, close, decodeEvent
+@docs streamUrl, open, close, decodeEvent, eventDecoder
 
 -}
 
@@ -184,27 +184,51 @@ decodeEvent string =
         JD.decodeString eventDecoder string
 
 
+{-| The JSON decoder for a non-colon event.
+
+You'll usually use `decodeEvent` on the string that comes over the WebSocket."
+
+-}
 eventDecoder : Decoder Event
 eventDecoder =
-    JD.field "event" JD.string
+    JD.value
         |> JD.andThen
-            (\event ->
-                case event of
-                    "update" ->
-                        JD.map UpdateEvent
-                            (JD.field "data" ED.statusDecoder)
+            (\value ->
+                case JD.decodeValue (JD.field "event" JD.string) value of
+                    Err err ->
+                        JD.fail "Can't decode event string"
 
-                    "notification" ->
-                        JD.map NotificationEvent
-                            (JD.field "data" ED.notificationDecoder)
+                    Ok event ->
+                        case JD.decodeValue (JD.field "payload" JD.string) value of
+                            Err _ ->
+                                JD.fail "Non-string or missing payload"
 
-                    "delete" ->
-                        JD.map DeleteEvent
-                            (JD.field "data" JD.string)
+                            Ok payload ->
+                                let
+                                    decoder =
+                                        case event of
+                                            "update" ->
+                                                JD.map UpdateEvent ED.statusDecoder
 
-                    "filters_changed" ->
-                        JD.succeed FiltersChangedEvent
+                                            "notification" ->
+                                                JD.map NotificationEvent ED.notificationDecoder
 
-                    _ ->
-                        JD.fail <| "Unknown event: " ++ event
+                                            "delete" ->
+                                                JD.map DeleteEvent <| JD.succeed payload
+
+                                            "filters_changed" ->
+                                                JD.succeed FiltersChangedEvent
+
+                                            "nothing" ->
+                                                JD.succeed NoEvent
+
+                                            _ ->
+                                                JD.succeed <| UnknownEvent event
+                                in
+                                case JD.decodeString decoder payload of
+                                    Err err ->
+                                        JD.fail <| JD.errorToString err
+
+                                    Ok v ->
+                                        JD.succeed v
             )
