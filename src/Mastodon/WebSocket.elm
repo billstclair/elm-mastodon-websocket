@@ -167,6 +167,10 @@ type Event
     | NotificationEvent Notification
     | DeleteEvent String
     | FiltersChangedEvent
+      -- The string is the description from `PortFunnel.WebSocket.ConnectedResponse`
+      -- or `PortFunnel.WebSocket.ReconnectedResponse`.
+    | ConnectedEvent String
+    | ReconnectedEvent String
       -- A message that can't be decoded
     | UnknownEvent String
       -- When the socket connection is closed
@@ -177,7 +181,7 @@ type Event
 -}
 decodeEvent : String -> Result JD.Error Event
 decodeEvent string =
-    if ":" == String.left 1 string then
+    if "" == string || ":" == String.left 1 string then
         Ok NoEvent
 
     else
@@ -214,10 +218,17 @@ eventDecoder =
                                                 JD.map NotificationEvent ED.notificationDecoder
 
                                             "delete" ->
-                                                JD.map DeleteEvent <| JD.succeed payload
+                                                JD.map DeleteEvent <|
+                                                    JD.succeed payload
 
                                             "filters_changed" ->
                                                 JD.succeed FiltersChangedEvent
+
+                                            "connected" ->
+                                                JD.succeed <| ConnectedEvent payload
+
+                                            "reconnected" ->
+                                                JD.succeed <| ReconnectedEvent payload
 
                                             "nothing" ->
                                                 JD.succeed NoEvent

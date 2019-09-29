@@ -614,6 +614,22 @@ socketHandler response state mdl =
                 WebSocket.ErrorResponse error ->
                     ( ( "", NoEvent ), "", Just <| WebSocket.errorToString error )
 
+                WebSocket.ConnectedResponse { key, description } ->
+                    ( ( "connected"
+                      , ConnectedEvent description
+                      )
+                    , key
+                    , Nothing
+                    )
+
+                WebSocket.ReconnectedResponse { key, description } ->
+                    ( ( "connected"
+                      , ReconnectedEvent description
+                      )
+                    , key
+                    , Nothing
+                    )
+
                 WebSocket.MessageReceivedResponse { key, message } ->
                     ( ( message
                       , case
@@ -644,14 +660,6 @@ socketHandler response state mdl =
                     in
                     ( ( "closed"
                       , ClosedEvent string
-                      )
-                    , key
-                    , Nothing
-                    )
-
-                WebSocket.ConnectedResponse { key, description } ->
-                    ( ( "Connected: " ++ description
-                      , NoEvent
                       )
                     , key
                     , Nothing
@@ -693,6 +701,12 @@ encodeEventValue index event =
 
                 FiltersChangedEvent ->
                     ( "filters_changed", JE.null )
+
+                ReconnectedEvent description ->
+                    ( "reconnected", JE.string description )
+
+                ConnectedEvent description ->
+                    ( "connected", JE.string description )
 
                 UnknownEvent string ->
                     ( "unknown", JE.string string )
