@@ -54,6 +54,7 @@ type StreamType
     = UserStream
     | PublicStream
     | LocalStream
+    | ProStream
     | PublicHashtagStream String
     | LocalHashtagStream String
     | ListStream String
@@ -105,6 +106,9 @@ streamTypeToQueryParameters accessToken streamType =
 
             LocalStream ->
                 [ Builder.string "stream" "public:local" ]
+
+            ProStream ->
+                [ Builder.string "stream" "pro" ]
 
             PublicHashtagStream hashtag ->
                 [ Builder.string "stream" "hashtag"
@@ -221,38 +225,59 @@ eventDecoder =
                                 JD.fail "Non-string or missing payload"
 
                             Ok payload ->
-                                let
-                                    decoder =
-                                        case event of
-                                            "update" ->
-                                                JD.map UpdateEvent ED.statusDecoder
+                                case event of
+                                    "update" ->
+                                        case
+                                            JD.decodeString
+                                                (ED.statusDecoder
+                                                    |> JD.andThen
+                                                        (\status ->
+                                                            JD.succeed <|
+                                                                UpdateEvent status
+                                                        )
+                                                )
+                                                payload
+                                        of
+                                            Ok x ->
+                                                JD.succeed x
 
-                                            "notification" ->
-                                                JD.map NotificationEvent ED.notificationDecoder
+                                            Err err ->
+                                                JD.fail <| JD.errorToString err
 
-                                            "delete" ->
-                                                JD.map DeleteEvent <|
-                                                    JD.succeed payload
+                                    "notification" ->
+                                        case
+                                            JD.decodeString
+                                                (ED.notificationDecoder
+                                                    |> JD.andThen
+                                                        (\notification ->
+                                                            JD.succeed <|
+                                                                NotificationEvent
+                                                                    notification
+                                                        )
+                                                )
+                                                payload
+                                        of
+                                            Ok x ->
+                                                JD.succeed x
 
-                                            "filters_changed" ->
-                                                JD.succeed FiltersChangedEvent
+                                            Err err ->
+                                                JD.fail <| JD.errorToString err
 
-                                            "connected" ->
-                                                JD.succeed <| ConnectedEvent payload
+                                    "delete" ->
+                                        JD.succeed <| DeleteEvent payload
 
-                                            "reconnected" ->
-                                                JD.succeed <| ReconnectedEvent payload
+                                    "filters_changed" ->
+                                        JD.succeed FiltersChangedEvent
 
-                                            "nothing" ->
-                                                JD.succeed NoEvent
+                                    "connected" ->
+                                        JD.succeed <| ConnectedEvent payload
 
-                                            _ ->
-                                                JD.succeed <| UnknownEvent event
-                                in
-                                case JD.decodeString decoder payload of
-                                    Err err ->
-                                        JD.fail <| JD.errorToString err
+                                    "reconnected" ->
+                                        JD.succeed <| ReconnectedEvent payload
 
-                                    Ok v ->
-                                        JD.succeed v
+                                    "nothing" ->
+                                        JD.succeed NoEvent
+
+                                    _ ->
+                                        JD.succeed <| UnknownEvent event
             )

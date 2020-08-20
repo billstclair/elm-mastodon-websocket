@@ -1485,34 +1485,40 @@ addStream streamType model =
             model |> withNoCmd
 
         Just instance ->
-            let
-                index =
-                    case List.head model.streams of
-                        Nothing ->
-                            0
+            case instance.urls of
+                Nothing ->
+                    { model | msg = Just "No streaming_api url." }
+                        |> withNoCmd
 
-                        Just s ->
-                            s.index + 1
+                Just urls ->
+                    let
+                        index =
+                            case List.head model.streams of
+                                Nothing ->
+                                    0
 
-                stream =
-                    { index = index
-                    , url =
-                        Mastodon.WebSocket.streamUrl
-                            instance.urls.streaming_api
-                            model.token
-                            streamType
-                    , shown = True
-                    , responses = []
-                    , paused = False
+                                Just s ->
+                                    s.index + 1
+
+                        stream =
+                            { index = index
+                            , url =
+                                Mastodon.WebSocket.streamUrl
+                                    urls.streaming_api
+                                    model.token
+                                    streamType
+                            , shown = True
+                            , responses = []
+                            , paused = False
+                            }
+
+                        message =
+                            WebSocket.makeOpenWithKey (String.fromInt index) stream.url
+                    in
+                    { model
+                        | streams = stream :: model.streams
                     }
-
-                message =
-                    WebSocket.makeOpenWithKey (String.fromInt index) stream.url
-            in
-            { model
-                | streams = stream :: model.streams
-            }
-                |> withCmd (webSocketSend message)
+                        |> withCmd (webSocketSend message)
 
 
 getLoggedInInstance : String -> Cmd Msg
@@ -2429,6 +2435,8 @@ addStreamUI model =
         , button (AddStream PublicStream) "public"
         , text " "
         , button (AddStream LocalStream) "public:local"
+        , text " "
+        , button (AddStream ProStream) "pro"
         , text " "
         , button (AddStream DirectStream) "direct"
         , br

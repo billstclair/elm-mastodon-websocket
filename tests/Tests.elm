@@ -207,9 +207,6 @@ stripNotification notification =
 stripEvent : Event -> Event
 stripEvent event =
     case event of
-        NoEvent ->
-            event
-
         UpdateEvent status ->
             UpdateEvent <| stripStatus status
 
@@ -230,26 +227,34 @@ eventToString event =
             (\( ev, value ) ->
                 JE.object
                     [ ( "event", JE.string ev )
-                    , ( "data", value )
+                    , ( "payload", value )
                     ]
                     |> JE.encode 0
             )
             <|
                 case event of
                     UpdateEvent status ->
-                        ( "update", ED.encodeStatus status )
+                        ( "update"
+                        , ED.encodeStatus status
+                            |> JE.encode 0
+                            |> JE.string
+                        )
 
                     NotificationEvent notification ->
-                        ( "notification", ED.encodeNotification notification )
+                        ( "notification"
+                        , ED.encodeNotification notification
+                            |> JE.encode 0
+                            |> JE.string
+                        )
 
                     DeleteEvent id ->
                         ( "delete", JE.string id )
 
                     FiltersChangedEvent ->
-                        ( "filters_changed", JE.null )
+                        ( "filters_changed", JE.string "" )
 
                     _ ->
-                        ( "nothing", JE.null )
+                        ( "nothing", JE.string "" )
 
 
 eventTest : Event -> String -> Test
@@ -601,6 +606,8 @@ status1 =
     , in_reply_to_account_id = Just "in_reply_to_account_id"
     , reblog = Just <| WrappedStatus status2
     , content = "content"
+    , plain_markdown = Nothing
+    , plain_text = Nothing
     , created_at = "created_at"
     , emojis = [ emoji1, emoji2 ]
     , replies_count = 100
@@ -637,6 +644,8 @@ status2 =
     , in_reply_to_account_id = Nothing
     , reblog = Nothing
     , content = "content2"
+    , plain_markdown = Nothing
+    , plain_text = Nothing
     , created_at = "created_at2"
     , emojis = []
     , replies_count = 0
@@ -779,7 +788,7 @@ attachment1 =
     , type_ = UnknownAttachment
     , url = "url"
     , remote_url = Just "remote_url"
-    , preview_url = "preview_url"
+    , preview_url = Just "preview_url"
     , text_url = Just "text_url"
     , meta = Nothing
     , description = Nothing
@@ -793,7 +802,7 @@ attachment2 =
     , type_ = ImageAttachment
     , url = "url2"
     , remote_url = Nothing
-    , preview_url = "preview_url2"
+    , preview_url = Just "preview_url2"
     , text_url = Nothing
     , meta = Just imageMeta1
     , description = Just "description2"
@@ -807,7 +816,7 @@ attachment3 =
     , type_ = ImageAttachment
     , url = "url3"
     , remote_url = Nothing
-    , preview_url = "preview_url3"
+    , preview_url = Just "preview_url3"
     , text_url = Just "text_url3"
     , meta = Just imageMeta2
     , description = Just "description3"
@@ -821,7 +830,7 @@ attachment4 =
     , type_ = VideoAttachment
     , url = "url4"
     , remote_url = Nothing
-    , preview_url = "preview_url4"
+    , preview_url = Just "preview_url4"
     , text_url = Nothing
     , meta = Just videoMeta1
     , description = Nothing
@@ -835,7 +844,7 @@ attachment5 =
     , type_ = VideoAttachment
     , url = "url5"
     , remote_url = Nothing
-    , preview_url = "preview_url5"
+    , preview_url = Just "preview_url5"
     , text_url = Nothing
     , meta = Just videoMeta2
     , description = Just "description5"
