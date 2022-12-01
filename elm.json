@@ -3,7 +3,7 @@
     "name": "billstclair/elm-mastodon-websocket",
     "summary": "Elm client for the websocket API of the Mastodon social network.",
     "license": "MIT",
-    "version": "2.0.5",
+    "version": "2.0.6",
     "exposed-modules": [
         "Mastodon.WebSocket",
         "Mastodon.PortFunnels"
